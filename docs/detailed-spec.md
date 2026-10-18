@@ -77,12 +77,12 @@ Single `MainViewModel` holds `UiState`; Compose renders one screen per state. Na
 - Cached preview photo lives at `cache/preview.jpg`; only one exists at a time. Deleted on やり直す, Sent, QueuedNotice.
 - Buttons: during CancelWindow all buttons except 取り消す are disabled; during Sending all buttons are disabled; the settings icon is hidden in Loading, Capturing, CancelWindow, Sending, Sent, QueuedNotice. [ASSUMPTION: icon hidden in those transient states.]
 - System back in Loading, Capturing, Preview, CancelWindow, Sending, Sent, and QueuedNotice is ignored (no accidental discard). Implementation: each of these composables declares `BackHandler(enabled = true) { }` (also covers Android 13+ predictive back; set `android:enableOnBackInvokedCallback` consistently so the empty handler takes effect). Camera, OutboxFull, SetupRequired, PermissionDenied keep the default back behavior (leaves the app). [ASSUMPTION]
-- Background/foreground behavior [ASSUMPTION]: the CancelWindow timer and the foreground send run in `viewModelScope` using `SystemClock.elapsedRealtime`; they continue while the app is in the background as long as the process lives. On return the screen shows the current state (e.g., Sending still running, or Camera if Sent/QueuedNotice already elapsed; the Sent/QueuedNotice 2 s timers also run on elapsed time and the vibration/sound is not replayed). If the process is killed, recovery (7.6) sends the photo via the worker.
+- Background/foreground behavior [CONFIRMED by the user]: the CancelWindow timer and the foreground send run in `viewModelScope` using `SystemClock.elapsedRealtime`; they continue while the app is in the background as long as the process lives. On return the screen shows the current state (e.g., Sending still running, or Camera if Sent/QueuedNotice already elapsed; the Sent/QueuedNotice 2 s timers also run on elapsed time and the vibration/sound is not replayed). If the process is killed, recovery (7.6) sends the photo via the worker.
 - Zero recipients: Preview shows the text "送り先が登録されていません" in place of recipient buttons; やり直す stays.
 
 ### 2.4 Active count
 - Active items = outbox items with phase in {CANCEL_WINDOW, SENDING_FG, SENDING_BG, QUEUED} (state 待機中). 要確認 items are never counted.
-- Strict cap: the active count never exceeds 5 (no 6th item). Shutter blocked (OutboxFull) iff active count >= 5. A photo can only be taken when active <= 4. While a photo exists in Preview, it reserves one slot: promotions of 要確認 items by 今すぐ再送 / settings save (7.5) are allowed only while `active + (previewExists ? 1 : 0) < 5`; otherwise the item waits (`resendPending`). As a defensive guard, a recipient tap with active >= 5 is rejected and shows the OutboxFull guidance. [CONFIRMED by the user, Q47; reservation rule is an ASSUMPTION]
+- Strict cap: the active count never exceeds 5 (no 6th item). Shutter blocked (OutboxFull) iff active count >= 5. A photo can only be taken when active <= 4. While a photo exists in Preview, it reserves one slot: promotions of 要確認 items by 今すぐ再送 / settings save (7.5) are allowed only while `active + (previewExists ? 1 : 0) < 5`; otherwise the item waits (`resendPending`). As a defensive guard, a recipient tap with active >= 5 is rejected and shows the OutboxFull guidance. [CONFIRMED by the user, Q47; reservation rule also CONFIRMED by the user]
 
 ## 3. UI strings and layout rules
 
@@ -319,13 +319,13 @@ Standard Material sizes (not the father-facing button sizes). A scrollable singl
 - No notification for success, queued notice, or successful later delivery.
 
 ### 10.2 Success feedback
-- On entering Sent: vibration one-shot 300 ms (`VibrationEffect.createOneShot`, DEFAULT_AMPLITUDE) and a short sound (`ToneGenerator(STREAM_NOTIFICATION, 80)` `TONE_PROP_ACK`, about 200 ms) together. [ASSUMPTION: durations and tone] In silent/vibrate ringer mode (`AudioManager.ringerMode != RINGER_MODE_NORMAL`) only the vibration is performed; the sound is not forced. [CONFIRMED by the user, Q49]
+- On entering Sent: vibration one-shot 300 ms (`VibrationEffect.createOneShot`, DEFAULT_AMPLITUDE) and a short sound (`ToneGenerator(STREAM_NOTIFICATION, 80)` `TONE_PROP_ACK`, about 200 ms) together. [CONFIRMED by the user: durations and tone] In silent/vibrate ringer mode (`AudioManager.ringerMode != RINGER_MODE_NORMAL`) only the vibration is performed; the sound is not forced. [CONFIRMED by the user, Q49]
 - Queued notice and later (worker) deliveries: silent, no vibration.
 - Screen-keep-on is NOT adopted.
 
 ## 11. Module layout, manifest, build notes
 
-### 11.1 Single module `app`, package `com.example.parentphoto` [ASSUMPTION: package name]
+### 11.1 Single module `app`, package `com.example.parentphoto` [CONFIRMED by the user: package name]
 - `ui/` — `MainActivity`, `MainViewModel`, screens (`CameraScreen`, `PreviewScreen`, `CancelWindowScreen`, `SendingScreen`, `SentScreen`, `QueuedNoticeScreen`, `SetupRequiredScreen`, `PermissionDeniedScreen`, `settings/*`), theme.
 - `camera/` — CameraX binding, orientation listener, `ImageProcessor` (resize/rotate).
 - `mail/` — `MailComposer`, `SmtpSender`, `ErrorClassifier`, `MailResult`.
