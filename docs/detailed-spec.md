@@ -71,11 +71,11 @@ Single `MainViewModel` holds `UiState`; Compose renders one screen per state. Na
 | Settings | back | previous main state | Re-evaluate 2.2 (setup may have changed). |
 - Cached preview photo lives at `cache/preview.jpg`; only one exists at a time. Deleted on やり直す, Sent, QueuedNotice.
 - Buttons: during CancelWindow all buttons except 取り消す are disabled; during Sending all buttons are disabled; the settings icon is hidden in CancelWindow, Sending, Sent, QueuedNotice. [ASSUMPTION: icon hidden in those transient states.]
-- System back in Preview, CancelWindow, Sending, Sent, and QueuedNotice is ignored (no accidental discard). [ASSUMPTION]
+- System back in Preview, CancelWindow, Sending, Sent, and QueuedNotice is ignored (no accidental discard). Implementation: each of these composables declares `BackHandler(enabled = true) { }` (also covers Android 13+ predictive back; set `android:enableOnBackInvokedCallback` consistently so the empty handler takes effect). Camera, OutboxFull, SetupRequired, PermissionDenied keep the default back behavior (leaves the app). [ASSUMPTION]
 - Zero recipients: Preview shows the text "送り先が登録されていません" in place of recipient buttons; やり直す stays.
 
 ### 2.4 Active count
-- Active items = outbox items with phase in {CANCEL_WINDOW, SENDING_FG, QUEUED} (state 待機中). 要確認 items are never counted.
+- Active items = outbox items with phase in {CANCEL_WINDOW, SENDING_FG, SENDING_BG, QUEUED} (state 待機中). 要確認 items are never counted.
 - Shutter blocked (OutboxFull) iff active count >= 5. At tap of a recipient button the new item is always allowed (active count was <= 4 when the photo was taken and only the father's own sends raise it; 今すぐ再送 may raise it, see 7.5).
 
 ## 3. UI strings and layout rules
@@ -149,6 +149,11 @@ Single `MainViewModel` holds `UiState`; Compose renders one screen per state. Na
 
 ## 6. SMTP send, error classification, logging
 
+### 6.0 Early spike (FIRST implementation task)
+- Before building the outbox or UI, implement a throwaway spike that sends a multipart mail with a JPEG attachment through `android-mail` + `android-activation` using a real Gmail app password, built as an R8-minified release build, and verify on (a) an API 26-level device/emulator and (b) a recent device (Android 14/15).
+- Known risks to check: `javax.activation` / mailcap handler loading failing on multipart (`UnsupportedDataTypeException: no object DCH for MIME type multipart/mixed`), `NoClassDefFoundError` for `java.awt.*` / `javax.activation` classes, R8 stripping `javax.mail` / `com.sun.mail` classes or META-INF mailcap resources, duplicate META-INF resource packaging errors.
+- Result recorded before proceeding; if it fails, stop and ask the user (library choice Q30 may need revisiting). [ASSUMPTION]
+
 ### 6.1 Library and session
 - Dependencies: `com.sun.mail:android-mail` and `com.sun.mail:android-activation` (1.6.x; pick the latest 1.6.x at implementation time and verify on API 26 and a release build).
 - Session properties: `mail.smtp.host`, `mail.smtp.port`, `mail.smtp.auth=true`, `mail.smtp.connectiontimeout=15000`, `mail.smtp.timeout=30000`, `mail.smtp.writetimeout=30000`.
@@ -181,19 +186,19 @@ Single `MainViewModel` holds `UiState`; Compose renders one screen per state. Na
 ### 7.1 Storage layout
 - Photos: app-private `filesDir/outbox/{itemId}.jpg` (not in shared storage; excluded from backup; not scanned by media).
 - Metadata: Room database `outbox.db` (dependency `androidx.room`), tables `outbox_item` and `send_log`. [CONFIRMED: Room chosen for atomic queries; DataStore JSON is an acceptable alternative.]
-- `outbox_item` columns: `id` (UUID text, PK), `recipientId` (text), `capturedAtMillis` (long), `createdAtMillis` (long; row creation), `retryStartMillis` (long; start of the 24 h window; reset on resume), `attentionSinceMillis` (long, nullable), `state` (`WAITING` | `ATTENTION`), `phase` (`CANCEL_WINDOW` | `SENDING_FG` | `QUEUED`, meaningful when WAITING), `attentionReason` (`AUTH` | `PERMANENT` | `RETRY_EXPIRED` | `RECIPIENT_DELETED`, nullable), `resendPending` (boolean), `fileSize` (long).
+- `outbox_item` columns: `id` (UUID text, PK), `recipientId` (text), `capturedAtMillis` (long), `createdAtMillis` (long; row creation), `retryStartMillis` (long; start of the 24 h window; reset on resume), `attentionSinceMillis` (long, nullable), `state` (`WAITING` | `ATTENTION`), `phase` (`CANCEL_WINDOW` | `SENDING_FG` | `SENDING_BG` | `QUEUED`, meaningful when WAITING), `attentionReason` (`AUTH` | `PERMANENT` | `RETRY_EXPIRED` | `RECIPIENT_DELETED`, nullable), `resendPending` (boolean), `fileSize` (long).
 - The destination email is NOT stored in the item (read from the recipient list by `recipientId` at send time).
 - `send_log` columns: `id` (auto), `timeMillis`, `recipientName`, `result`, `code`. Trimmed to the newest 50 after each insert.
 
 ### 7.2 Counting
-- Active = `state = WAITING` (phases CANCEL_WINDOW, SENDING_FG, QUEUED). 要確認 = `state = ATTENTION`.
+- Active = `state = WAITING` (phases CANCEL_WINDOW, SENDING_FG, SENDING_BG, QUEUED). 要確認 = `state = ATTENTION`.
 - Observed through Room `Flow` for badges and OutboxFull.
 
 ### 7.3 Item creation
 - At the start of CancelWindow: insert row (WAITING, phase CANCEL_WINDOW, `createdAtMillis = retryStartMillis = now`) and copy `preview.jpg` to `outbox/{id}.jpg`. This makes the photo survive an app kill.
 
 ### 7.4 Worker
-- `OutboxWorker` (`CoroutineWorker`) in unique work `outbox-send` (`ExistingWorkPolicy.REPLACE` when triggered by 今すぐ再送/settings save/test success to reset the backoff; `KEEP` otherwise), constraint `NetworkType.CONNECTED`, backoff `BackoffPolicy.EXPONENTIAL` initial 15 min (WorkManager caps the delay at about 5 h).
+- `OutboxWorker` (`CoroutineWorker`) in unique work `outbox-send` (enqueue policy: `KEEP` by default; never `REPLACE` while the work is RUNNING), constraint `NetworkType.CONNECTED`, backoff `BackoffPolicy.EXPONENTIAL` initial 15 min (WorkManager caps the delay at about 5 h).
 - Enqueue when: an item becomes QUEUED after a failed/offline foreground send; settings are saved with SMTP fields (7.5); a test send succeeds; 今すぐ再送 is tapped; app start recovery (7.6) found queued items.
 - Run:
   1. Load WAITING items with phase QUEUED; if none, `Result.success()`.
@@ -202,18 +207,21 @@ Single `MainViewModel` holds `UiState`; Compose renders one screen per state. Na
   4. Group remaining items by `recipientId`; for a missing recipient -> 要確認 reason RECIPIENT_DELETED (notify); otherwise batch per 5 and send each mail with the current recipient address.
   5. Per mail: success -> delete rows and files, log SENT; NETWORK/TRANSIENT -> keep QUEUED, log FAILED, mark the run for `Result.retry()`; AUTH/PERMANENT -> those items to 要確認 (reason accordingly), log FAILED, notify.
   6. Return `Result.retry()` if any item remains QUEUED after transient failures; else `Result.success()`.
+- Triggers (今すぐ再送 / settings save / test success): first write the state change to Room (reset `retryStartMillis`, clear attention state, set phase QUEUED), then enqueue. If `WorkInfo` state is not RUNNING (absent/ENQUEUED/BLOCKED), enqueue with `REPLACE` so the backoff delay is reset; if it is RUNNING, do not replace: enqueue a follow-up one-time work `outbox-send-next` (`KEEP`, same constraints). [ASSUMPTION]
+- The running worker re-queries Room for QUEUED items after each mail batch, so items resumed during a run are picked up.
+- Before `Transport.send()` the worker sets the batch items' phase to `SENDING_BG` (counts as active; treated like SENDING_FG in recovery 7.6). `onStopped` / cancellation (`CancellationException`) leaves the items WAITING/QUEUED (phase restored to QUEUED) with no log entry, so a cancelled run never leaves a half-done state; a duplicate mail is possible only in the ambiguous case already accepted (7.7).
 - A mail is atomic: all photos in a failed mail stay or move together.
-- The worker never touches items in CANCEL_WINDOW or SENDING_FG.
+- The worker never touches items in CANCEL_WINDOW or SENDING_FG (SENDING_BG items are its own).
 - Retries stop after 24 h from `retryStartMillis` (step 2): the photo is kept as 要確認 (not deleted).
 
 ### 7.5 要確認 handling
 - Reasons: AUTH, PERMANENT, RETRY_EXPIRED, RECIPIENT_DELETED.
 - Resume triggers (-> 待機中/QUEUED, `retryStartMillis = now`, enqueue worker): saving SMTP settings (address, password, host, port) resumes all ATTENTION items with reason AUTH, PERMANENT, RETRY_EXPIRED; a successful test send does the same; 今すぐ再送 on a single item resumes it regardless of reason except RECIPIENT_DELETED (button disabled for that reason; the item can only be deleted). [ASSUMPTION: RECIPIENT_DELETED items are not resumable; re-adding a recipient does not restore the link.]
-- Active cap on resume: if active count is 5, the item stays 要確認 with `resendPending = true` and is promoted (oldest first) automatically when the active count drops below 5.
+- Active cap on resume: if the active count is 5, a manual 今すぐ再送 tap does NOT send immediately. The item stays 要確認 with `resendPending = true`, the UI shows the short notice "順番待ちです。しばらくお待ちください" (snackbar/toast in hidden settings), and the item is promoted automatically, oldest first, when the active count drops below 5. [ASSUMPTION: notice wording] The same applies to resumes triggered by settings save / test success.
 - Recipient edited: the new address is used at the next send (read by id). Recipient deleted: every WAITING/QUEUED item of that recipient moves to 要確認 (reason RECIPIENT_DELETED) immediately in the same transaction as the deletion; items in CANCEL_WINDOW/SENDING_FG of that recipient finish normally (attempt uses the address read at attempt start).
 
 ### 7.6 Startup recovery
-- On process start: rows with phase CANCEL_WINDOW or SENDING_FG (left by a kill) -> phase QUEUED so the photo is sent by the worker; orphan files without a row are deleted; rows without a file are deleted; enqueue the worker if any QUEUED exists. [CONFIRMED: a kill during the undo window sends the photo rather than discarding it.]
+- On process start: rows with phase CANCEL_WINDOW, SENDING_FG, or SENDING_BG (left by a kill) -> phase QUEUED so the photo is sent by the worker; orphan files without a row are deleted; rows without a file are deleted; enqueue the worker if any QUEUED exists. [CONFIRMED: a kill during the undo window sends the photo rather than discarding it.]
 
 ### 7.7 Duplicates
 - Ambiguous failures (e.g., timeout after DATA) are retried anyway; no dedupe; each mail attempt gets a new Message-ID (default JavaMail behavior).
@@ -273,7 +281,7 @@ Standard Material sizes (not the father-facing button sizes). A scrollable singl
 - Persist, then run resume (7.5) for ATTENTION items with reasons AUTH, PERMANENT, RETRY_EXPIRED.
 
 ### 9.5 Test send
-- Section: recipient dropdown (from the recipient list; button disabled with hint "送り先を登録してください" when empty) and button "テスト送信". Disabled while the SMTP form is dirty (hint "先に保存してください").
+- Section: recipient dropdown (selection is transient UI state held in the ViewModel / `rememberSaveable`, NOT persisted in DataStore) [ASSUMPTION] (from the recipient list; button disabled with hint "送り先を登録してください" when empty) and button "テスト送信". Disabled while the SMTP form is dirty (hint "先に保存してください").
 - Sends the text-only test mail (5) using saved settings, `Dispatchers.IO`, same timeouts, 60 s cap; shows progress, then a dialog:
   - Success: "送信できました" (log TEST_OK; triggers resume per 7.5).
   - AUTH: "ログインできませんでした。送信元アドレスとアプリパスワードを確認してください"
@@ -331,6 +339,7 @@ Standard Material sizes (not the father-facing button sizes). A scrollable singl
 - Release artifact name includes date-time (e.g., `ParentPhoto_YYYYMMDD-HHMMSS.apk`) per global convention.
 
 ## 12. Acceptance checklist (mapped to spec.md)
+- [ ] FIRST TASK: spike (6.0) passed on API 26-level and Android 14/15 with an R8 release build (multipart mail with JPEG attachment received).
 - [ ] 1 Overview: no server component; mail sent directly over SMTP on Dispatchers.IO; portrait-locked UI; landscape-held shot gives landscape photo.
 - [ ] 2.1 Camera: launches directly to a full-screen preview; one standard-size shutter; permission denied shows guidance + open-settings button; settings icon visible; photo kept when returning from settings.
 - [ ] 2.2 Preview: やり直す deletes the photo and returns to camera; one button per recipient (max 6, scrollable); 0 recipients shows "送り先が登録されていません"; no send-to-everyone.
@@ -344,4 +353,5 @@ Standard Material sizes (not the father-facing button sizes). A scrollable singl
 - [ ] 5 Outbox: failure queues the photo; WorkManager with network constraint, 15 min exponential backoff, stops after 24 h -> 要確認 (photo kept); auth/permanent -> 要確認 immediately; batching per recipient with ~18 MB split; settings read at send time; recipient edit uses new address, delete -> 要確認; 要確認 cap 10 with oldest deleted on overflow and logged; resume on settings save / test success / 今すぐ再送 (waits if 5 active); duplicates tolerated.
 - [ ] 5 Notification: shown only on becoming 要確認; overflow wording when the oldest photo was removed; permission requested once on API 33+.
 - [ ] 6 Unresolved: none; all Q1-Q44 reflected.
+- [ ] Worker safety: triggers never cancel a RUNNING worker; items set to SENDING_BG before send; cancellation leaves items QUEUED; back handlers ignore back in Preview/CancelWindow/Sending/Sent/QueuedNotice.
 - [ ] Release: R8 build sends mail correctly; manifest has INTERNET, CAMERA, POST_NOTIFICATIONS, VIBRATE (plus ACCESS_NETWORK_STATE).
