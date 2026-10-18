@@ -2,7 +2,7 @@
 
 <!-- Answer record. Architecture changed 2026-10-17: GAS dropped, direct SMTP from the app (DECISIONS.md D9). Q1-Q17 re-audited: each carries a status. Q18-Q31 were new questions caused by the SMTP switch; all answered. -->
 
-Status: Q1-Q17 audited (valid / changed / obsolete). Q18-Q31 RESOLVED (2026-10-17). Outbox method adopted later the same day (Q5/Q13 changed); Q32-Q44 RESOLVED (2026-10-18).
+Status: Q1-Q17 audited (valid / changed / obsolete). Q18-Q31 RESOLVED (2026-10-17). Outbox method adopted later the same day (Q5/Q13 changed); Q32-Q44 RESOLVED (2026-10-18). Q45-Q50 (audit decisions) RESOLVED (2026-10-18).
 
 ## Index
 - Q1 GAS authentication - OBSOLETE
@@ -49,7 +49,13 @@ Status: Q1-Q17 audited (valid / changed / obsolete). Q18-Q31 RESOLVED (2026-10-1
 - Q41 Attachment file names and 25 MB split
 - Q42 SMTP settings changed while items are queued
 - Q43 Interplay: やり直す, deleted recipients, queued photos
-- Q44 Notification on permanent failure - CHANGED 2026-10-18
+- Q44 Notification on permanent failure
+- Q45 Capture/resize/camera-init failure
+- Q46 Stale preview photo at app start
+- Q47 Strict active cap and promotion
+- Q48 Recipient name length, wrapping, order
+- Q49 Success sound in silent mode
+- Q50 Batch split size 15 MB - CHANGED 2026-10-18
 
 ## Audit of earlier answers (Q1-Q17)
 
@@ -310,7 +316,7 @@ Adopted by the user (not open): on send failure the resized photo is saved in an
   - B Same, split limit 10 MB.
   - C No split (rely on the cap of 5).
 - Recommendation: A.
-- Answer: A. Each attachment named by its own capture time yyyyMMdd_HHmmss.jpg; same-second duplicates get _2, _3. Split into several mails when attachments exceed about 18 MB total; each split mail uses the Q40 format with its own count.
+- Answer: A. Each attachment named by its own capture time yyyyMMdd_HHmmss.jpg; same-second duplicates get _2, _3. Split into several mails when attachments exceed about 18 MB total (CHANGED 2026-10-18 by Q50 to about 15 MB); each split mail uses the Q40 format with its own count.
 ### Q42. SMTP settings changed while items are queued [RESOLVED]
 - Options:
   - A ★ Queued items store photo, recipient id and capture time only; sender account, password, host and port are read at send time, so new settings apply to queued items. Saving SMTP settings or a successful test send immediately retries "要確認" items.
@@ -335,3 +341,30 @@ Adopted by the user (not open): on send failure the resized photo is saved in an
 - Recommendation: A.
 - Answer: A. Android notification on the father's phone only when an item becomes "要確認": "写真が送れていません。家族に連絡してください" (no technical detail). POST_NOTIFICATIONS requested once on API 33+; if denied, only the badge is shown.
 - CHANGED (2026-10-18; wording CONFIRMED by the user): when a "要確認" overflow deletes the oldest photo, the notification text is "写真が送れていません。古い写真1枚を削除しました。家族に連絡してください".
+
+## Audit decisions (Q45-Q50, all CONFIRMED by the user, 2026-10-18)
+
+### Q45. Capture / resize / camera-init failure [RESOLVED]
+- Options: A ★ return to the camera with "撮影できませんでした。もう一度お試しください" and log to Logcat; B silent return; C error screen with a button.
+- Answer: A. CONFIRMED by the user.
+
+### Q46. Stale preview photo at app start [RESOLVED]
+- Options: A ★ delete `cache/preview.jpg` at every cold start and never restore Preview; B restore Preview.
+- Answer: A. CONFIRMED by the user.
+
+### Q47. Strict active cap and promotion of 要確認 [RESOLVED]
+- Options: A ★ active count never exceeds 5; 今すぐ再送 waits (resendPending) and OutboxRepository observes the active-count Flow and promotes oldest-first; B allow a 6th item temporarily.
+- Answer: A. CONFIRMED by the user. (Designer's detail, to be confirmed: a photo shown in Preview reserves one slot, so promotions cannot take the last slot while a photo is waiting to be sent.)
+
+### Q48. Recipient display name length, wrapping, order [RESOLVED]
+- Options: A ★ max 10 characters, wraps to at most 2 lines, fixed registration order; B longer names with ellipsis; C reorderable.
+- Answer: A. CONFIRMED by the user.
+
+### Q49. Success sound in silent mode [RESOLVED]
+- Options: A ★ vibration only (sound not forced); B force sound.
+- Answer: A. CONFIRMED by the user.
+
+### Q50. Batch split size [RESOLVED]
+- Background: Base64 makes 18 MB of photos about 24.7 MB, too close to Gmail's 25 MB.
+- Options: A ★ split at about 15 MB total; B keep 18 MB.
+- Answer: A. CONFIRMED by the user. Supersedes the 18 MB in Q41.
