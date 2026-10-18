@@ -71,3 +71,9 @@
 - Decision (user): the cap of 5 counts only active ("待機中") items; "要確認" items do not count and do not block shooting. "要確認" has its own cap of 10; the 11th "要確認" item deletes the oldest "要確認" item automatically (recorded in the send log; the notification says so). This overflow is the only automatic deletion.
 - Reason: stale unhandled photos must not block the father from shooting.
 - Trade-off (replaces the earlier one): at most 10 stale "要確認" photos are kept, and a photo that nobody handles can eventually be lost by overflow. Mitigated by the notification, the warning badge, and the unsent list.
+
+## D13. Audit follow-ups (Q45-Q50, 2026-10-18)
+- Q50: attachments are measured before Base64 encoding, which adds about 37 percent; 18 MB would give about 24.7 MB, too close to Gmail's 25 MB limit including headers, so the split is at 15 MB.
+- Q47: the cap of 5 is strict (no 6th item) so the "shutter blocked at 5" rule is simple; the cost is that 今すぐ再送 may wait until a slot frees. A photo in Preview reserves a slot (designer's detail) so a promotion cannot make the photo's own send exceed the cap.
+- Q46: Preview is never restored after a restart; the photo has not been sent or queued, so discarding it is safer than showing a stale photo to the father.
+- Q49: sound is not forced in silent mode out of respect for the phone's setting; the vibration still confirms success.
