@@ -1,0 +1,347 @@
+# Detailed Specification
+
+<!-- Elaboration of spec.md to a level usable for implementation plans (docs/plans/<feature-name>/PLAN.md). Only decided items; rationale is in DECISIONS.md. Items marked [ASSUMPTION] are implementation-level choices not stated in spec.md/QA.md; developer-lite may follow them, and the user can override. -->
+
+## Index
+1. Scope and conventions
+2. Screen state machine
+3. UI strings and layout rules
+4. Camera and image processing
+5. Mail composition
+6. SMTP send, error classification, logging
+7. Outbox
+8. Settings data model, secret storage, sizes
+9. Hidden settings screen
+10. Notifications, haptics, sound
+11. Module layout, manifest, build notes
+12. Acceptance checklist (mapped to spec.md)
+
+## 1. Scope and conventions
+- Android only (Kotlin, Jetpack Compose, min API 26). No server. UI text Japanese. Portrait-locked UI.
+- Time: all displayed and mailed times use Asia/Tokyo (`ZoneId.of("Asia/Tokyo")`), independent of device time zone. Capture time is stored as epoch millis (UTC) and formatted at use.
+- Constants:
+  - `UNDO_SECONDS = 3`, `SENT_SCREEN_MS = 2000`, `QUEUED_NOTICE_MS = 2000`
+  - `FG_SEND_TIMEOUT_MS = 60000`, SMTP connect 15000, read 30000, write 30000
+  - `ACTIVE_CAP = 5`, `ATTENTION_CAP = 10`, `RECIPIENT_CAP = 6`
+  - `RETRY_WINDOW_MS = 24 h`, `BACKOFF_INITIAL = 15 min` (exponential), `BATCH_MAX_BYTES = 18 MB` (sum of attachment file sizes)
+  - `SEND_LOG_MAX = 50`, `LONG_PRESS_MS = 3000`
+- Items marked [ASSUMPTION] are implementation choices beyond the confirmed spec.
+
+## 2. Screen state machine
+Single `MainViewModel` holds `UiState`; Compose renders one screen per state. Navigation to Settings is a separate route (back returns to the previous main state).
+
+### 2.1 States
+| State | Description |
+|---|---|
+| PermissionDenied | Camera permission not granted: guidance + open-settings button. |
+| SetupRequired | Sender address, app password, host, or port empty/invalid. |
+| Camera | Full-screen preview, shutter, badges, settings icon. |
+| OutboxFull | Camera screen variant: 5 active items; shutter disabled; guidance. |
+| Preview | Captured (already resized) photo; やり直す; recipient buttons; settings icon. |
+| CancelWindow | 3 s undo window after a recipient tap. |
+| Sending | Foreground send, up to 60 s. |
+| Sent | "送りました！" for 2 s. |
+| QueuedNotice | "あとで送ります" for 2 s. |
+| Settings | Hidden settings (separate route). |
+
+### 2.2 Precedence at launch and after returning from Settings
+1. If SetupRequired condition holds -> SetupRequired (camera not started).
+2. Else if camera permission is not granted -> request permission once (system dialog) on first display; if denied -> PermissionDenied. [ASSUMPTION: SetupRequired is checked before camera permission, since photos could not be sent anyway.]
+3. Else if active items = 5 -> OutboxFull; else Camera.
+- If a captured photo exists (state was Preview) when opening Settings, returning goes back to Preview with the same photo (photo kept; setup re-evaluated: if now SetupRequired, the photo is kept in cache and Preview is shown again once setup is valid).
+
+### 2.3 Transitions
+| From | Event | To | Actions |
+|---|---|---|---|
+| (launch) | app start | per 2.2 | Recover outbox rows (7.6). |
+| PermissionDenied | tap "設定を開く" | system app settings | `ACTION_APPLICATION_DETAILS_SETTINGS`; on resume re-evaluate 2.2. |
+| Camera | tap shutter | Preview | Take photo, resize (4.3), record capture time. Shutter disabled while capturing. |
+| Camera | active count reaches 5 | OutboxFull | Observed via outbox Flow. |
+| OutboxFull | active count < 5 | Camera | Automatic. |
+| Preview | tap やり直す | Camera (or OutboxFull) | Delete cached photo file; no send. |
+| Preview | tap recipient button | CancelWindow | Create outbox item (7.3) with phase CANCEL_WINDOW; copy photo into outbox dir. |
+| CancelWindow | tap 取り消す | Preview | Delete the item row and its outbox file; the cached preview photo is untouched (photo kept). |
+| CancelWindow | 3 s elapsed | Sending | Phase -> SENDING_FG. |
+| Sending | success | Sent | Delete item (row + file); log SENT; vibrate + sound. |
+| Sending | failure/timeout (60 s) | QueuedNotice | Classify (6.3); phase -> QUEUED (transient/network) or state -> 要確認 (auth/permanent); log; enqueue worker. |
+| Sending | device clearly offline before attempt | QueuedNotice | Skip attempt; phase -> QUEUED; enqueue worker (no log entry of failure; log QUEUED_OFFLINE). |
+| Sent | 2 s | Camera (or OutboxFull) | Delete cached preview photo. |
+| QueuedNotice | 2 s | Camera (or OutboxFull) | Delete cached preview photo. |
+| any main state except CancelWindow/Sending/Sent/QueuedNotice | 3 s long press on settings icon | Settings | See 3.3. |
+| Settings | back | previous main state | Re-evaluate 2.2 (setup may have changed). |
+- Cached preview photo lives at `cache/preview.jpg`; only one exists at a time. Deleted on やり直す, Sent, QueuedNotice.
+- Buttons: during CancelWindow all buttons except 取り消す are disabled; during Sending all buttons are disabled; the settings icon is hidden in CancelWindow, Sending, Sent, QueuedNotice. [ASSUMPTION: icon hidden in those transient states.]
+- System back in Preview, CancelWindow, Sending, Sent, and QueuedNotice is ignored (no accidental discard). [ASSUMPTION]
+- Zero recipients: Preview shows the text "送り先が登録されていません" in place of recipient buttons; やり直す stays.
+
+### 2.4 Active count
+- Active items = outbox items with phase in {CANCEL_WINDOW, SENDING_FG, QUEUED} (state 待機中). 要確認 items are never counted.
+- Shutter blocked (OutboxFull) iff active count >= 5. At tap of a recipient button the new item is always allowed (active count was <= 4 when the photo was taken and only the father's own sends raise it; 今すぐ再送 may raise it, see 7.5).
+
+## 3. UI strings and layout rules
+
+### 3.1 Exact strings (father-facing)
+| Place | String |
+|---|---|
+| Preview, retry button | やり直す |
+| Preview, 0 recipients | 送り先が登録されていません |
+| CancelWindow label | `{n}秒後に送ります` with n = 3, 2, 1 (updates every second) |
+| CancelWindow button | 取り消す |
+| Sending | 送信中... |
+| Sent | 送りました！ |
+| QueuedNotice | あとで送ります |
+| Badge, active items (shown on Camera/OutboxFull when N > 0) | 未送信 N件 |
+| Badge, 要確認 (separate, warning color, shown when M > 0) | 送れていません M件 |
+| OutboxFull guidance | 送れていない写真が5枚あります。ネットワークを確認してください |
+| SetupRequired | 設定が必要です (no button) |
+| PermissionDenied guidance [ASSUMPTION wording] | カメラの使用を許可してください |
+| PermissionDenied button [ASSUMPTION wording] | 設定を開く |
+| Notification (requires attention) | 写真が送れていません。家族に連絡してください |
+| Notification (overflow deleted oldest) | 写真が送れていません。古い写真1枚を削除しました。家族に連絡してください |
+- The word "要確認" is administrator-facing only (hidden settings); never shown to the father.
+- Shutter content description: 撮影 (accessibility only). [ASSUMPTION]
+
+### 3.2 Sizes
+- Father-facing text: buttons 28 sp, messages 36 sp, fixed (not affected by the button size setting; specified in `sp`).
+- Button size levels (min height, full width): 標準 56 dp / 大 96 dp / 特大 128 dp, default 大. Applies to: やり直す, recipient buttons, 取り消す, 設定を開く (PermissionDenied). Does not apply to: the shutter button (standard, a 72 dp circular button [ASSUMPTION]), the settings icon, and the hidden settings screen.
+- Recipient list: vertically scrollable `LazyColumn` above the やり直す button, max 6 entries; やり直す is pinned at the bottom.
+- Badges: top-left corner of Camera/OutboxFull; "未送信 N件" neutral color, "送れていません M件" warning color (e.g., orange/red), text 20 sp [ASSUMPTION: smaller than message text].
+
+### 3.3 Settings icon and long press
+- Small gear icon (24 dp visual, 48 dp touch target) in the top-right corner of Camera, OutboxFull, Preview, SetupRequired, PermissionDenied.
+- Tap does nothing visible. Long press of 3000 ms (finger held continuously; movement beyond touch slop cancels) opens Settings. Implement with `pointerInput` + `awaitLongPressOrCancellation`-like timer at 3 s. No PIN, no haptic hint required.
+
+## 4. Camera and image processing
+
+### 4.1 CameraX
+- `ProcessCameraProvider`, `Preview` (PreviewView, FILL_CENTER), `ImageCapture` (CAPTURE_MODE_MINIMIZE_LATENCY), back camera, lifecycle-bound to the activity while state is Camera/OutboxFull.
+- Activity `screenOrientation="portrait"` (UI never rotates).
+- Photo orientation follows how the device is held: an `OrientationEventListener` maps device orientation to `Surface.ROTATION_*` and sets `imageCapture.targetRotation` continuously.
+
+### 4.2 Capture
+- On shutter tap: record `capturedAtMillis = System.currentTimeMillis()`, call `takePicture` to `cache/capture_raw.jpg`.
+
+### 4.3 Resize
+- After capture (before showing Preview): decode with EXIF orientation applied (bake rotation into pixels), scale so the long edge is at most 1600 px (no upscaling; keep aspect ratio), encode JPEG quality 85, write `cache/preview.jpg` (no EXIF orientation tag needed since rotation is baked in), delete the raw file.
+- Run on `Dispatchers.Default`/IO. Preview displays `preview.jpg` (already correctly oriented) with `ContentScale.Fit`.
+- The same bytes are copied into the outbox at send time (no second resize).
+
+### 4.4 Permission
+- Request `CAMERA` once when the camera is first needed. Denied (including "don't ask again") -> PermissionDenied with the open-settings button.
+
+## 5. Mail composition
+- Built with `javax.mail` (`Session`, `MimeMessage`, `MimeMultipart("mixed")`).
+- From: `InternetAddress(senderAddress, senderName, "UTF-8")` -> "sender name <address>"; if the sender name setting is empty, address only. [ASSUMPTION: no "家族" fallback in From; the fallback applies to the body only.]
+- Reply-To: not set.
+- To: the recipient's email address only (single recipient; no Cc/Bcc). [ASSUMPTION: display name not included in To.]
+- Date: now.
+- Subject (UTF-8, `setSubject(s, "UTF-8")`): 1 photo "写真が届きました"; N >= 2 photos "写真が届きました（N枚）" (full-width parentheses).
+- Body (text/plain; charset=UTF-8; lines separated by `\n`), with `{sender}` = sender name setting, or "家族" when empty:
+  - 1 photo:
+    ```
+    {sender}さんから写真が届きました。
+    撮影日時: yyyy/MM/dd HH:mm
+    ```
+  - N photos: first line `{sender}さんから写真が届きました。`, then one line `撮影日時: yyyy/MM/dd HH:mm` per photo in ascending capture order (same order as attachments).
+- Attachments: `image/jpeg`, one `MimeBodyPart` per photo from the outbox file (`FileDataSource` / `ByteArrayDataSource`), Base64 transfer encoding, file name `MimeUtility.encodeText`-safe ASCII `yyyyMMdd_HHmmss.jpg` from the capture time (Asia/Tokyo). Same-second duplicates within one mail get `_2`, `_3` before the extension (e.g., `20261017_091500_2.jpg`).
+- Batching (outbox retry only; foreground send is always 1 photo): group queued items by recipient id, sort by capture time ascending, fill a mail until the sum of file sizes would exceed 18 MB, then start a new mail. Each mail uses the subject/body rules above with its own N. With 5 photos at 1600 px this almost never splits.
+- Test mail (9.5): subject "テスト送信", body "これはテスト送信です。", no attachment.
+
+## 6. SMTP send, error classification, logging
+
+### 6.1 Library and session
+- Dependencies: `com.sun.mail:android-mail` and `com.sun.mail:android-activation` (1.6.x; pick the latest 1.6.x at implementation time and verify on API 26 and a release build).
+- Session properties: `mail.smtp.host`, `mail.smtp.port`, `mail.smtp.auth=true`, `mail.smtp.connectiontimeout=15000`, `mail.smtp.timeout=30000`, `mail.smtp.writetimeout=30000`.
+  - Port 465: `mail.smtp.ssl.enable=true`. Any other port: `mail.smtp.starttls.enable=true` and `mail.smtp.starttls.required=true` (cleartext never used). [ASSUMPTION]
+  - `mail.smtp.ssl.checkserveridentity=true`.
+  - Authenticator returns (sender address, app password); the send uses `Transport.send(message)`.
+- Defaults: host `smtp.gmail.com`, port `465`.
+- All sending runs on `Dispatchers.IO`. Overall cap per attempt: `withTimeout(60_000)` around the whole `Transport.send`; on timeout treat as NETWORK (code TIMEOUT).
+- Settings (address, password, host, port) are read from storage at send time (not cached across sends).
+
+### 6.2 Offline shortcut (foreground only)
+- Before a foreground attempt, check `ConnectivityManager.activeNetwork` has `NET_CAPABILITY_INTERNET`; if not (or null), skip the attempt and queue immediately (6.4). Otherwise attempt even if not `VALIDATED`.
+
+### 6.3 Error classification
+| Class | Detection | Outbox effect | Code (log) |
+|---|---|---|---|
+| NETWORK / TRANSIENT | `UnknownHostException`, `ConnectException`, `SocketTimeoutException`, `SocketException`, `SSLException` (handshake/IO), other `IOException`, our 60 s timeout, SMTP 4xx replies | stay 待機中 (phase QUEUED); retry per 7.4 | NETWORK, TIMEOUT |
+| AUTH | `AuthenticationFailedException`; SMTP 530/534/535 | -> 要確認 (reason AUTH) immediately | AUTH |
+| PERMANENT | `SendFailedException` with 5xx reply (e.g., recipient rejected 550/553), `AddressException`, other non-auth 5xx | -> 要確認 (reason PERMANENT) immediately | REJECTED, OTHER |
+| Unknown exception | anything else | treated as TRANSIENT (retry until 24 h, then 要確認) [ASSUMPTION] | OTHER |
+- The father sees no cause (UI: QueuedNotice for every failure).
+
+### 6.4 Recording
+- Logcat: tag `ParentPhoto/Mail`; record class, code, exception class and message, SMTP reply code. Never log the password or the message body.
+- Send log (7.7, last 50 entries, visible in hidden settings): one entry per mail attempt result with time, recipient display name (or "（削除された宛先）"), result, and short code.
+  - Results: `SENT`, `FAILED` (with code NETWORK/TIMEOUT/AUTH/REJECTED/OTHER), `QUEUED_OFFLINE`, `DELETED_MANUAL`, `DELETED_OVERFLOW` (shown as "削除（上限超過）"), `RESEND_REQUESTED`, `TEST_OK`, `TEST_FAILED`.
+
+## 7. Outbox
+
+### 7.1 Storage layout
+- Photos: app-private `filesDir/outbox/{itemId}.jpg` (not in shared storage; excluded from backup; not scanned by media).
+- Metadata: Room database `outbox.db` (dependency `androidx.room`), tables `outbox_item` and `send_log`. [CONFIRMED: Room chosen for atomic queries; DataStore JSON is an acceptable alternative.]
+- `outbox_item` columns: `id` (UUID text, PK), `recipientId` (text), `capturedAtMillis` (long), `createdAtMillis` (long; row creation), `retryStartMillis` (long; start of the 24 h window; reset on resume), `attentionSinceMillis` (long, nullable), `state` (`WAITING` | `ATTENTION`), `phase` (`CANCEL_WINDOW` | `SENDING_FG` | `QUEUED`, meaningful when WAITING), `attentionReason` (`AUTH` | `PERMANENT` | `RETRY_EXPIRED` | `RECIPIENT_DELETED`, nullable), `resendPending` (boolean), `fileSize` (long).
+- The destination email is NOT stored in the item (read from the recipient list by `recipientId` at send time).
+- `send_log` columns: `id` (auto), `timeMillis`, `recipientName`, `result`, `code`. Trimmed to the newest 50 after each insert.
+
+### 7.2 Counting
+- Active = `state = WAITING` (phases CANCEL_WINDOW, SENDING_FG, QUEUED). 要確認 = `state = ATTENTION`.
+- Observed through Room `Flow` for badges and OutboxFull.
+
+### 7.3 Item creation
+- At the start of CancelWindow: insert row (WAITING, phase CANCEL_WINDOW, `createdAtMillis = retryStartMillis = now`) and copy `preview.jpg` to `outbox/{id}.jpg`. This makes the photo survive an app kill.
+
+### 7.4 Worker
+- `OutboxWorker` (`CoroutineWorker`) in unique work `outbox-send` (`ExistingWorkPolicy.REPLACE` when triggered by 今すぐ再送/settings save/test success to reset the backoff; `KEEP` otherwise), constraint `NetworkType.CONNECTED`, backoff `BackoffPolicy.EXPONENTIAL` initial 15 min (WorkManager caps the delay at about 5 h).
+- Enqueue when: an item becomes QUEUED after a failed/offline foreground send; settings are saved with SMTP fields (7.5); a test send succeeds; 今すぐ再送 is tapped; app start recovery (7.6) found queued items.
+- Run:
+  1. Load WAITING items with phase QUEUED; if none, `Result.success()`.
+  2. For each item whose `now - retryStartMillis > 24 h` (and not yet sent): set state ATTENTION, reason RETRY_EXPIRED, `attentionSinceMillis = now`; apply 7.8 overflow rule; notify (10.1). Skip them below.
+  3. Read SMTP settings; if SetupRequired condition holds, treat as AUTH for all remaining items (-> 要確認, reason AUTH, notify once) and return success.
+  4. Group remaining items by `recipientId`; for a missing recipient -> 要確認 reason RECIPIENT_DELETED (notify); otherwise batch per 5 and send each mail with the current recipient address.
+  5. Per mail: success -> delete rows and files, log SENT; NETWORK/TRANSIENT -> keep QUEUED, log FAILED, mark the run for `Result.retry()`; AUTH/PERMANENT -> those items to 要確認 (reason accordingly), log FAILED, notify.
+  6. Return `Result.retry()` if any item remains QUEUED after transient failures; else `Result.success()`.
+- A mail is atomic: all photos in a failed mail stay or move together.
+- The worker never touches items in CANCEL_WINDOW or SENDING_FG.
+- Retries stop after 24 h from `retryStartMillis` (step 2): the photo is kept as 要確認 (not deleted).
+
+### 7.5 要確認 handling
+- Reasons: AUTH, PERMANENT, RETRY_EXPIRED, RECIPIENT_DELETED.
+- Resume triggers (-> 待機中/QUEUED, `retryStartMillis = now`, enqueue worker): saving SMTP settings (address, password, host, port) resumes all ATTENTION items with reason AUTH, PERMANENT, RETRY_EXPIRED; a successful test send does the same; 今すぐ再送 on a single item resumes it regardless of reason except RECIPIENT_DELETED (button disabled for that reason; the item can only be deleted). [ASSUMPTION: RECIPIENT_DELETED items are not resumable; re-adding a recipient does not restore the link.]
+- Active cap on resume: if active count is 5, the item stays 要確認 with `resendPending = true` and is promoted (oldest first) automatically when the active count drops below 5.
+- Recipient edited: the new address is used at the next send (read by id). Recipient deleted: every WAITING/QUEUED item of that recipient moves to 要確認 (reason RECIPIENT_DELETED) immediately in the same transaction as the deletion; items in CANCEL_WINDOW/SENDING_FG of that recipient finish normally (attempt uses the address read at attempt start).
+
+### 7.6 Startup recovery
+- On process start: rows with phase CANCEL_WINDOW or SENDING_FG (left by a kill) -> phase QUEUED so the photo is sent by the worker; orphan files without a row are deleted; rows without a file are deleted; enqueue the worker if any QUEUED exists. [CONFIRMED: a kill during the undo window sends the photo rather than discarding it.]
+
+### 7.7 Duplicates
+- Ambiguous failures (e.g., timeout after DATA) are retried anyway; no dedupe; each mail attempt gets a new Message-ID (default JavaMail behavior).
+
+### 7.8 要確認 cap and overflow
+- When an item becomes ATTENTION and the ATTENTION count exceeds 10: delete the ATTENTION item with the smallest `attentionSinceMillis` (row + file), log `DELETED_OVERFLOW` (recipient name, capture time not required), and use the overflow notification text (10.1). This is the only automatic deletion.
+- Manual delete from the unsent list: row + file, log `DELETED_MANUAL`.
+
+## 8. Settings data model, secret storage, sizes
+
+### 8.1 DataStore (Preferences) `settings`
+| Key | Type | Default | Notes |
+|---|---|---|---|
+| `sender_name` | String | "" | Used as `{sender}` and in From. |
+| `smtp_user` | String | "" | Sender email address. |
+| `smtp_host` | String | `smtp.gmail.com` | |
+| `smtp_port` | Int | 465 | 1-65535. |
+| `password_cipher` | String | "" | Base64(IV 12 bytes + AES-GCM ciphertext+tag). |
+| `button_size` | String | `LARGE` | `STANDARD` / `LARGE` / `XLARGE` -> 56/96/128 dp. |
+| `recipients_json` | String | `[]` | JSON array of `{id, name, email}`, max 6, order preserved. |
+| `notif_permission_asked` | Boolean | false | POST_NOTIFICATIONS requested once. |
+- Recipient `id` = UUID generated at creation; never reused.
+
+### 8.2 App password encryption
+- Android Keystore AES-256 key, alias `parent_photo_smtp_pw`, `AES/GCM/NoPadding`, random 12-byte IV per encryption, no user-authentication requirement. Implemented with `javax.crypto` + `AndroidKeyStore` (Tink not required). [ASSUMPTION]
+- Stored only as `password_cipher`. Decrypt at send time. If decryption fails (key lost) treat the password as unset -> SetupRequired.
+- The plaintext is never shown again after saving (9.2), never logged.
+- Backup exclusion: `android:allowBackup="false"` in the manifest (excludes DataStore, outbox photos, and `outbox.db`). [CONFIRMED: whole-app backup disabled instead of fine-grained rules.]
+
+### 8.3 SetupRequired condition
+- True if any: `smtp_user` not a valid email format; password unset/undecryptable; `smtp_host` blank; `smtp_port` outside 1-65535. (Sender name and recipients are not part of this check.)
+
+## 9. Hidden settings screen
+Standard Material sizes (not the father-facing button sizes). A scrollable single screen with a top app bar titled "設定" and a back arrow.
+
+### 9.1 Sections and labels [ASSUMPTION: labels]
+1. 送り先 (recipients): list of rows (display name, email) with edit and delete icons; "追加" button (disabled at 6 recipients). Add/edit dialog: fields "表示名" and "メールアドレス", buttons "保存"/"キャンセル". Delete shows a confirm dialog "削除しますか？". Saved immediately to DataStore.
+2. 送信者名: field "送信者名（例: お父さん）".
+3. メール設定 (SMTP): "送信元メールアドレス", "アプリパスワード", "SMTPホスト", "SMTPポート"; one "保存" button for sections 2-3 (button enabled when the form is dirty and valid).
+4. ボタンの大きさ: radio group 標準 / 大 / 特大; saved immediately.
+5. テスト送信 (9.5).
+6. 未送信一覧 (opens 9.6), 送信ログ (opens 9.7).
+
+### 9.2 App password field
+- Not saved yet: empty masked field with a show/hide toggle; paste allowed; all whitespace (spaces, newlines) removed from the input on change.
+- Already saved: field shows `●●●●●●●●●●●●●●●●` (disabled) and a "変更" button; tapping 変更 clears the field to an empty editable masked field. The saved value is never revealed. Leaving the field untouched keeps the saved password.
+
+### 9.3 Validation (on 保存; show error text under the field; do not save if any error)
+- Recipient: display name non-empty after trim ("表示名を入力してください"); email must match a standard email pattern (`android.util.Patterns.EMAIL_ADDRESS`) ("メールアドレスの形式が正しくありません"); no duplicate check; max 6.
+- 送信元メールアドレス: valid email format.
+- アプリパスワード: after removing whitespace, exactly 16 characters ("16文字で入力してください"). Required when no password is saved.
+- SMTPホスト: non-empty after trim.
+- SMTPポート: integer 1-65535.
+- 送信者名: no validation (may be empty).
+
+### 9.4 After saving SMTP fields
+- Persist, then run resume (7.5) for ATTENTION items with reasons AUTH, PERMANENT, RETRY_EXPIRED.
+
+### 9.5 Test send
+- Section: recipient dropdown (from the recipient list; button disabled with hint "送り先を登録してください" when empty) and button "テスト送信". Disabled while the SMTP form is dirty (hint "先に保存してください").
+- Sends the text-only test mail (5) using saved settings, `Dispatchers.IO`, same timeouts, 60 s cap; shows progress, then a dialog:
+  - Success: "送信できました" (log TEST_OK; triggers resume per 7.5).
+  - AUTH: "ログインできませんでした。送信元アドレスとアプリパスワードを確認してください"
+  - NETWORK/TIMEOUT: "ネットワークに接続できませんでした"
+  - REJECTED: "宛先アドレスが受け付けられませんでした"
+  - Other: "送信に失敗しました（{code}）"
+  - Logged as TEST_FAILED with the code.
+
+### 9.6 Unsent list (未送信一覧)
+- Two groups: "送信待ち" (WAITING items) and "要確認" (ATTENTION items, max 10). Row: thumbnail (decoded from the outbox file, about 96 dp), recipient name (or "（削除された宛先）"), capture time `yyyy/MM/dd HH:mm`, state label (待機中 / 要確認) and, for 要確認, the reason in Japanese: AUTH "ログイン失敗", PERMANENT "送信拒否", RETRY_EXPIRED "24時間再試行しても送れませんでした", RECIPIENT_DELETED "宛先が削除されました". [ASSUMPTION: reason labels]
+- Buttons per row: "今すぐ再送" (enabled per 7.5; for 待機中 items it triggers an immediate worker run) and "削除" (confirm dialog "削除しますか？").
+- Items in CANCEL_WINDOW/SENDING_FG are shown as 待機中 with buttons disabled.
+- Empty text: "未送信の写真はありません".
+
+### 9.7 Send log
+- Newest first, up to 50 rows: time `yyyy/MM/dd HH:mm:ss`, recipient name, result text (送信成功 / 失敗 / オフラインのため保留 / 削除 / 削除（上限超過） / 再送要求 / テスト成功 / テスト失敗), short code. No images.
+
+## 10. Notifications, haptics, sound
+
+### 10.1 Notification
+- Channel id `attention`, name "送信できていない写真", importance DEFAULT. Single notification id 1001 (replaced, not stacked). Tap opens the app. Small icon: app icon.
+- Fires when an item becomes 要確認 (any reason: auth, permanent, retry expired, recipient deleted). Text: "写真が送れていません。家族に連絡してください". If that transition caused an overflow deletion (7.8): "写真が送れていません。古い写真1枚を削除しました。家族に連絡してください". No technical detail.
+- Permission: `POST_NOTIFICATIONS` on API 33+. Requested once (flag `notif_permission_asked`) the first time the Camera screen is shown after camera permission has been resolved. [ASSUMPTION: timing] If denied, only the badges are shown. On API < 33 no request.
+- No notification for success, queued notice, or successful later delivery.
+
+### 10.2 Success feedback
+- On entering Sent: vibration one-shot 300 ms (`VibrationEffect.createOneShot`, DEFAULT_AMPLITUDE) and a short sound (`ToneGenerator(STREAM_NOTIFICATION, 80)` `TONE_PROP_ACK`, about 200 ms) together. [ASSUMPTION: durations and tone]
+- Queued notice and later (worker) deliveries: silent, no vibration.
+- Screen-keep-on is NOT adopted.
+
+## 11. Module layout, manifest, build notes
+
+### 11.1 Single module `app`, package `com.example.parentphoto` [ASSUMPTION: package name]
+- `ui/` — `MainActivity`, `MainViewModel`, screens (`CameraScreen`, `PreviewScreen`, `CancelWindowScreen`, `SendingScreen`, `SentScreen`, `QueuedNoticeScreen`, `SetupRequiredScreen`, `PermissionDeniedScreen`, `settings/*`), theme.
+- `camera/` — CameraX binding, orientation listener, `ImageProcessor` (resize/rotate).
+- `mail/` — `MailComposer`, `SmtpSender`, `ErrorClassifier`, `MailResult`.
+- `outbox/` — Room entities/DAOs, `OutboxRepository`, `OutboxWorker`, `OutboxScheduler`.
+- `settings/` — `SettingsRepository` (DataStore), `PasswordCrypto` (Keystore), `Recipient`, validators.
+- `notify/` — `AttentionNotifier`, `Feedback` (vibration/sound).
+- `util/` — `TokyoTime` formatter, connectivity check.
+
+### 11.2 Manifest
+- Permissions: `INTERNET`, `CAMERA`, `POST_NOTIFICATIONS`, `VIBRATE`, `ACCESS_NETWORK_STATE` [ASSUMPTION: needed for the offline shortcut check].
+- `<uses-feature android:name="android.hardware.camera" android:required="true"/>`.
+- Activity: `screenOrientation="portrait"`, `exported=true` (launcher), `windowSoftInputMode="adjustResize"`.
+- `android:allowBackup="false"`; `minSdk 26`.
+
+### 11.3 Dependencies
+- CameraX (core, camera2, lifecycle, view), Compose BOM + Material3, DataStore Preferences, Room (runtime, ktx, ksp compiler), WorkManager (ktx), Kotlin Coroutines, `com.sun.mail:android-mail`, `com.sun.mail:android-activation`.
+
+### 11.4 R8 / packaging
+- If `minifyEnabled true` for release, add keep rules: `-keep class javax.mail.** { *; }`, `-keep class com.sun.mail.** { *; }`, `-keep class javax.activation.** { *; }`, `-keep class com.sun.activation.** { *; }`, and `-dontwarn` for `java.awt.**`, `java.beans.**`, `javax.security.sasl.**`, `javax.naming.**`, `org.apache.harmony.**`.
+- Packaging: add `packaging { resources { pickFirsts += ["META-INF/mailcap", "META-INF/mimetypes.default", "META-INF/mailcap.default"] } }` if duplicate-resource errors occur (mailcap registration must remain so `image/jpeg` and `multipart/mixed` data handlers work).
+- Verify with a real release build: send a photo mail from a release APK on API 26+ before closing the feature.
+- Release artifact name includes date-time (e.g., `ParentPhoto_YYYYMMDD-HHMMSS.apk`) per global convention.
+
+## 12. Acceptance checklist (mapped to spec.md)
+- [ ] 1 Overview: no server component; mail sent directly over SMTP on Dispatchers.IO; portrait-locked UI; landscape-held shot gives landscape photo.
+- [ ] 2.1 Camera: launches directly to a full-screen preview; one standard-size shutter; permission denied shows guidance + open-settings button; settings icon visible; photo kept when returning from settings.
+- [ ] 2.2 Preview: やり直す deletes the photo and returns to camera; one button per recipient (max 6, scrollable); 0 recipients shows "送り先が登録されていません"; no send-to-everyone.
+- [ ] 2.3 Sending: 3 s "取り消す" window (cancel returns to Preview with the photo kept); then "送信中..." with all buttons disabled; success shows "送りました！" about 2 s with vibration and sound; failure queues and returns to camera via "あとで送ります" (no retry button); no cause shown; codes in Logcat only; first attempt capped at 60 s; offline skips the attempt.
+- [ ] 2.3 Badges and full state: "未送信 N件" for active, "送れていません M件" for 要確認; at 5 active items shooting is blocked with the guidance text; 要確認 items never block shooting.
+- [ ] 2.4 Setup: unset/invalid address, password, host or port shows "設定が必要です" without a button; settings open only via 3 s long press.
+- [ ] 2.5 Sizes: text 28/36 sp fixed; button levels 56/96/128 dp, default 大; shutter and settings icon unaffected.
+- [ ] 3 Settings: recipient CRUD (max 6; email format; empty name rejected); sender name; SMTP address/password (masked, 16 chars after removing spaces, never re-displayed)/host/port with defaults; button size; test send; 未送信一覧; send log of 50.
+- [ ] 3 Storage: non-secret settings in DataStore; password encrypted with Keystore AES-GCM; backup disabled.
+- [ ] 4 Send: resize 1600 px / JPEG 85; From "sender name <address>"; subject/body/file names as section 5; Asia/Tokyo; timeouts 15/30/60 s; port 465 SSL default; classification per 6.3.
+- [ ] 5 Outbox: failure queues the photo; WorkManager with network constraint, 15 min exponential backoff, stops after 24 h -> 要確認 (photo kept); auth/permanent -> 要確認 immediately; batching per recipient with ~18 MB split; settings read at send time; recipient edit uses new address, delete -> 要確認; 要確認 cap 10 with oldest deleted on overflow and logged; resume on settings save / test success / 今すぐ再送 (waits if 5 active); duplicates tolerated.
+- [ ] 5 Notification: shown only on becoming 要確認; overflow wording when the oldest photo was removed; permission requested once on API 33+.
+- [ ] 6 Unresolved: none; all Q1-Q44 reflected.
+- [ ] Release: R8 build sends mail correctly; manifest has INTERNET, CAMERA, POST_NOTIFICATIONS, VIBRATE (plus ACCESS_NETWORK_STATE).
