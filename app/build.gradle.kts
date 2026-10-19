@@ -26,6 +26,7 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
@@ -86,4 +87,10 @@ dependencies {
     implementation(libs.android.activation)
 
     testImplementation(libs.junit)
+    // JVM単体テストではandroid.jarのorg.jsonが空実装のため本物を使う
+    testImplementation(libs.org.json)
+
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.coroutines.test)
 }
