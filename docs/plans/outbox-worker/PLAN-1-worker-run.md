@@ -9,6 +9,7 @@ Source: ds 7.4 (Run steps 1-6, safety paragraphs), 6.3, 7.7. Package `outbox/`.
 4. Concurrency
 5. Result mapping
 6. Tests
+7. Implementation notes
 
 ## 1. Dependencies
 - `OutboxRepository` worker-support calls (outbox-queue PLAN-1 section 7, PLAN-2 section 6): `awaitRecovery`, `expireOld`, `markAllQueuedAttention`, `markRecipientMissing`, `queuedSnapshot`, `claimBatch`, `releaseBatch`, `finishBatchSent`, `finishBatchTransient`, `finishBatchAttention`.
@@ -94,3 +95,10 @@ JVM (`TestListenableWorkerBuilder` or the algorithm extracted into a `OutboxRunn
 - Item added (QUEUED) during the run is picked up by the re-query.
 - Two concurrent runs: no item sent twice.
 - Run waits for `awaitRecovery()`.
+
+## 7. Implementation notes (as built)
+- Algorithm lives in `OutboxRunner` (`run(): RunOutcome`); `OutboxWorker` only builds it from `ParentPhotoApp` properties (`outboxRepository`, `settingsRepository`, new `smtpSender`) and maps SUCCESS/RETRY. There is no `container` object; the app's existing lazy properties serve that role.
+- `WorkerOutbox` interface (+ `OutboxRepository.asWorkerOutbox()` adapter) and `BatchSender` fun interface are the test seams; `recipients` and `setupRequired` are injected lambdas (`SetupState` needs `android.util.Patterns`, unavailable on the JVM).
+- `awaitRecovery()` is called inside `run()` before taking `OutboxWorkerGate.mutex` (same order as section 2).
+- Cancellation safety: claim and send share one `try`; until `claimBatch` returns, the release target is the whole batch id list (a cancellation thrown on return from the claim transaction would otherwise leave rows `SENDING_BG`). `releaseBatch` only touches WAITING rows, and under the mutex only this run sets `SENDING_BG`. `finishBatch*` runs inside `NonCancellable`.
+- A missing-recipient batch is also added to the skip set, so a row that `markRecipientMissing` could not move never loops.
