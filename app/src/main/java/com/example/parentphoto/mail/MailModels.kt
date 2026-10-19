@@ -2,8 +2,8 @@ package com.example.parentphoto.mail
 
 import java.io.File
 
-/** 送信キュー項目のid。outbox-queue 側の主キー型に合わせて差し替える。 */
-typealias ItemId = Long
+/** 送信キュー項目のid。outbox_item.id はUUID文字列(outbox-queue PLAN-1)。 */
+typealias ItemId = String
 
 /** 添付1枚分。 */
 data class MailPhoto(val file: File, val capturedAtMillis: Long)
