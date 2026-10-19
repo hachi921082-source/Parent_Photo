@@ -1,6 +1,6 @@
 # Session Handoff
 
-Resume point for a fresh conversation. Updated 2026-10-18.
+Resume point for a fresh conversation. Updated 2026-10-19.
 
 ## Index
 1. Status
@@ -11,10 +11,10 @@ Resume point for a fresh conversation. Updated 2026-10-18.
 6. Working Notes
 
 ## 1. Status
-- Phase: specification and all PLANs complete (11 features, see `docs/plans/README.md`); spike DONE (R8 release mail send passed on API 26 emulator + M06; `docs/plans/smtp-send-spike/RESULT.md`). Implementation of the app not started.
+- Phase: specification and all PLANs complete (11 features, see `docs/plans/README.md`); spike DONE (R8 release mail send passed on API 26 emulator + M06; `docs/plans/smtp-send-spike/RESULT.md`). Implementation: app-foundation DONE (merged to main; compile/targetSdk 35 due to AGP 8.7.3; no Gradle wrapper, run Gradle 8.9 directly with Android Studio jbr; release signed with debug key, final signing undecided). Next: settings-storage.
 - Agent set: lite (`designer-lite`, `developer-lite`, `reviewer-lite`). Declared in `CLAUDE.md`.
 - Git: local repo on `main`, no remote. All docs committed (one file per commit, Japanese messages).
-- `docs/QA.md`: Q1-Q50 all resolved. Q1, Q2, Q8, Q10 are obsolete (GAS dropped).
+- `docs/QA.md`: Q1-Q62 all resolved. Q1, Q2, Q8, Q10 are obsolete (GAS dropped).
 
 ## 2. Where Things Are
 - `CLAUDE.md`: app summary, agent set, status line.
@@ -22,7 +22,7 @@ Resume point for a fresh conversation. Updated 2026-10-18.
 - `docs/detailed-spec.md`: implementation-level spec (state machine, UI strings, SMTP, outbox, data model, settings, checklist). Read its index, then only the needed section.
 - `docs/QA.md`: every user decision with the chosen option.
 - `docs/DECISIONS.md`: rationale and accepted risks (D1-D13).
-- `docs/plans/README.md`: empty plan index.
+- `docs/plans/README.md`: plan index with status.
 
 ## 3. Key Decisions
 - Android app only; no GAS/Drive. Direct SMTP via `com.sun.mail:android-mail` + `android-activation` (Gmail, default `smtp.gmail.com:465`).
