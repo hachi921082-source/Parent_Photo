@@ -10,9 +10,10 @@ import com.example.parentphoto.util.Constants
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.job
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -68,7 +69,8 @@ class OutboxAttentionRecoveryTest {
 
     @After
     fun tearDown() {
-        scope.cancel()
+        // 監視が閉じたDBに触れないよう、止まりきってから閉じる
+        runBlocking { scope.coroutineContext.job.cancelAndJoin() }
         db.close()
         root.deleteRecursively()
     }
