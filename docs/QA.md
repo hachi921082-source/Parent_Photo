@@ -398,3 +398,15 @@ Background: a self-review found places where the implementer would have had to c
 
 ### Q58. Remaining UI details [RESOLVED]
 - Answer: all recommended options adopted: password 変更 with キャンセル and empty-after-変更 invalid; test-send first recipient preselected and hint priority (no recipients, invalid saved settings, dirty); result dialog only OK; unsent list group order, sorting, headers, row layout; send log mapping table and one entry per mail; sub-screen back and dialog dismissal rules; precedence re-evaluated on every onResume; field keyboards, max lengths, host/port/address messages, first error focused, autofill off; accessibility descriptions; no animation; exact values (3000 ms failure message, 96 dp thumbnail, tone 200 ms); all UI strings in res/values/strings.xml. CONFIRMED by the user.
+
+### Q59. SMTP host over 253 characters [RESOLVED]
+- Answer: input blocked at 253 like the other fields; no error text. CONFIRMED by the user.
+
+### Q60. Settings icon color on SetupRequired and PermissionDenied [RESOLVED]
+- Answer: #49454F, same as Preview. CONFIRMED by the user.
+
+### Q61. Dirty-form confirm dialog dismissal [RESOLVED]
+- Answer: dialog "保存していない変更があります。破棄しますか？" has buttons 破棄 / 戻る only; outside tap or back = 戻る (stay). CONFIRMED by the user.
+
+### Q62. onResume precedence re-evaluation scope [RESOLVED]
+- Answer: replaces only SetupRequired, PermissionDenied, Camera, OutboxFull; Capturing, Preview, CancelWindow, Sending, Sent, QueuedNotice are never interrupted (a revoked permission mid-Preview does not discard the photo). CONFIRMED by the user.
