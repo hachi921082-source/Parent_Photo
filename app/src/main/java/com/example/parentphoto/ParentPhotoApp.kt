@@ -4,12 +4,16 @@ import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.util.Log
+import com.example.parentphoto.mail.ConnectivityChecker
+import com.example.parentphoto.mail.MailComposer
+import com.example.parentphoto.mail.SmtpSender
 import com.example.parentphoto.notify.AttentionNotifier
 import com.example.parentphoto.outbox.NoOpWorkScheduler
 import com.example.parentphoto.outbox.OutboxDatabase
 import com.example.parentphoto.outbox.OutboxFiles
 import com.example.parentphoto.outbox.OutboxRepository
 import com.example.parentphoto.settings.SettingsRepository
+import com.example.parentphoto.util.Connectivity
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -40,6 +44,17 @@ class ParentPhotoApp : Application() {
             scheduler = NoOpWorkScheduler(),
             notifier = AttentionNotifier(this),
             appScope = appScope,
+        )
+    }
+
+    // 送信の窓口。前面送信と再送ワーカーで同じものを使う(送信元・送信ログは未送信キュー)
+    val smtpSender: SmtpSender by lazy {
+        SmtpSender(
+            settings = settingsRepository,
+            connectivity = ConnectivityChecker { Connectivity.isClearlyOffline(this) },
+            composer = MailComposer(),
+            source = outboxRepository,
+            sendLog = outboxRepository,
         )
     }
 
