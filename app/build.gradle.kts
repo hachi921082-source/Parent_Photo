@@ -89,6 +89,7 @@ dependencies {
     testImplementation(libs.junit)
     // JVM単体テストではandroid.jarのorg.jsonが空実装のため本物を使う
     testImplementation(libs.org.json)
+    testImplementation(libs.coroutines.test)
 
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.androidx.test.runner)
