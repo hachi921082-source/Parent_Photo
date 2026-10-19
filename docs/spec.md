@@ -15,7 +15,7 @@
 - One-touch photo sending app for an elderly, smartphone-unfamiliar user.
 - Single component: Android app (Kotlin / Jetpack Compose). No server side.
 - The app sends mail directly over SMTP using JavaMail (com.sun.mail:android-mail), in the background (Coroutines, Dispatchers.IO).
-- UI text is Japanese.
+- UI text is Japanese. App name: FamilyPhoto (launcher label; package stays com.example.parentphoto).
 - Min Android API 26. UI is portrait-locked; captured photo orientation follows how the device is held.
 - Details: `docs/detailed-spec.md`.
 
@@ -45,7 +45,7 @@ Flow: Camera -> Preview/Select -> Undo window (3 s) -> Sending -> Sent -> Camera
 4. Unset configuration
    - When the sender address, app password, SMTP host, or SMTP port is empty or invalid, a dedicated "設定が必要です" display is shown. No button; settings are opened only by the 3 s long press on the settings icon.
 5. Sizes
-   - Text on father-facing screens is large and fixed (buttons 28sp, messages 36sp).
+   - Text on father-facing screens is large and fixed (buttons 28sp, messages 36sp), independent of the system font-size setting.
    - Size of "やり直す", recipient buttons, the "取り消す" button, and the camera-permission "設定を開く" button is changeable in the hidden settings screen: 3 levels 標準 56 dp / 大 96 dp / 特大 128 dp, default 大. The shutter button (standard size) and the corner settings icon are not affected.
 
 ## 3. Hidden Settings Screen (Administrator)
@@ -100,4 +100,4 @@ Flow: Camera -> Preview/Select -> Undo window (3 s) -> Sending -> Sent -> Camera
 - On recipient tap: undo window, then build the MIME message from the already-resized photo, send via SMTP on Dispatchers.IO; success goes to the Sent screen, failure goes to the outbox. Queued items are sent by WorkManager.
 
 ## 7. Unresolved Items
-None. All questions in `docs/QA.md` (Q1-Q50) are resolved.
+None. All questions in `docs/QA.md` (Q1-Q58) are resolved.
