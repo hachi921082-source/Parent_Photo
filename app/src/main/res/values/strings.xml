@@ -2,6 +2,9 @@
 <resources>
     <string name="app_name">FamilyPhoto</string>
     <string name="channel_attention_name">送信できていない写真</string>
+    <!-- 要確認の通知本文(ds 10.1) -->
+    <string name="notif_attention">写真が送れていません。家族に連絡してください</string>
+    <string name="notif_attention_overflow">写真が送れていません。古い写真1枚を削除しました。家族に連絡してください</string>
     <!-- 設定の検証エラー(ds 9.3) -->
     <string name="err_name_empty">表示名を入力してください</string>
     <string name="err_name_too_long">10文字以内で入力してください</string>
