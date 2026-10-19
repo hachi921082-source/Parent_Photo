@@ -12,6 +12,9 @@ work = "2.10.0"
 coroutines = "1.8.1"
 androidMail = "1.6.7"
 junit = "4.13.2"
+orgJson = "20231013"
+testExt = "1.2.1"
+testRunner = "1.6.2"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
@@ -32,6 +35,10 @@ coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-androi
 android-mail = { module = "com.sun.mail:android-mail", version.ref = "androidMail" }
 android-activation = { module = "com.sun.mail:android-activation", version.ref = "androidMail" }
 junit = { module = "junit:junit", version.ref = "junit" }
+org-json = { module = "org.json:json", version.ref = "orgJson" }
+androidx-test-ext-junit = { module = "androidx.test.ext:junit", version.ref = "testExt" }
+androidx-test-runner = { module = "androidx.test:runner", version.ref = "testRunner" }
+coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
