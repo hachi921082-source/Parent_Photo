@@ -11,7 +11,7 @@ Resume point for a fresh conversation. Updated 2026-10-19.
 6. Working Notes
 
 ## 1. Status
-- Phase: specification and all PLANs complete (11 features, see `docs/plans/README.md`); spike DONE (R8 release mail send passed on API 26 emulator + M06; `docs/plans/smtp-send-spike/RESULT.md`). Implementation: app-foundation DONE (merged to main; compile/targetSdk 35 due to AGP 8.7.3; no Gradle wrapper, run Gradle 8.9 directly with Android Studio jbr; release signed with debug key, final signing undecided). settings-storage DONE (merged; validation messages live in strings.xml err_* via ValidationError enum). Next: camera-capture.
+- Phase: specification and all PLANs complete (11 features, see `docs/plans/README.md`); spike DONE (R8 release mail send passed on API 26 emulator + M06; `docs/plans/smtp-send-spike/RESULT.md`). Implementation: app-foundation DONE (merged to main; compile/targetSdk 35 due to AGP 8.7.3; no Gradle wrapper, run Gradle 8.9 directly with Android Studio jbr; release signed with debug key, final signing undecided). settings-storage DONE (merged; validation messages live in strings.xml err_* via ValidationError enum). camera-capture DONE (merged). Deferred to photo-send-flow wiring manual checks: permission deny / never-ask-again, landscape capture, CameraX bind failure. Next: attention-notifications.
 - Agent set: lite (`designer-lite`, `developer-lite`, `reviewer-lite`). Declared in `CLAUDE.md`.
 - Git: local repo on `main`, no remote. All docs committed (one file per commit, Japanese messages).
 - `docs/QA.md`: Q1-Q62 all resolved. Q1, Q2, Q8, Q10 are obsolete (GAS dropped).
