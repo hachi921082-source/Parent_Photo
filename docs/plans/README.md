@@ -46,7 +46,7 @@ Split decisions: outbox-queue has three sub-plans (storage-counting, recovery-ov
 
 ## 3. Confirmed planning decisions (user answers)
 - Preview reserves one active slot (ds 2.4): confirmed.
-- Capture-failure message shown about 3 s, then Camera.
+- Capture-failure message shown exactly 3000 ms (`CAPTURE_FAILURE_MESSAGE_MS`), then hidden; a second failure while visible restarts the timer (Q45, Q58).
 - Timers (undo window, foreground send, Sent/QueuedNotice) keep running in background while the process lives; on process death recovery sends via the worker.
 - Package name `com.example.parentphoto`.
 - Success feedback: vibration 300 ms + `TONE_PROP_ACK`; vibration only in silent/vibrate mode.
@@ -54,6 +54,7 @@ Split decisions: outbox-queue has three sub-plans (storage-counting, recovery-ov
 - All other ds `[ASSUMPTION]` items are accepted as written. Any conflict found while planning is a new question to the user, not decided by the developer.
 - User supplies a Gmail app password via a local git-ignored file, an API 26-level emulator, and an Android 14/15 device (used by the spike; the acceptance run reuses them).
 - Duplicate mails after an ambiguous failure ("Exception reading response") are accepted (D14).
+- UI audit decisions Q51-Q58 (D15; ds 3.2, 3.4, 9, 10): father-facing screens ignore the system font scale (`fontScale = 1f` via `LocalDensity`), the hidden settings screen follows it (Q51); father-facing layouts/colors per ds 3.4, Material3 default light scheme, warning badge `#E65100`, badges 20 sp, no animation (Q52, Q55); 保存 is enabled whenever the form is dirty, validates on press, scrolls to/focuses the first error, shows Snackbar "保存しました" (Q53); app name `FamilyPhoto` (launcher label, `app_name`, release file `FamilyPhoto_YYYYMMDD-HHMMSS.apk`; package unchanged) (Q54); notification: no title, `BigTextStyle`, `setOnlyAlertOnce(true)`, `setAutoCancel(false)`, text of the latest event (Q56); Snackbars are Material3 `SnackbarDuration.Short` without action and only for "保存しました" and "順番待ちです。しばらくお待ちください"; no other resend feedback (Q57); all UI strings in `res/values/strings.xml`, precedence re-evaluated on every `onResume` without a new permission dialog, sub-screen routes/dialog dismissal rules, form keyboards/IME/autofill, test-send hint priority, unsent-list and send-log layouts, content descriptions (Q58, ds 9.1-9.9).
 
 ## 4. Cross-plan interface contracts
 Defined now (exact names in the owning plans); plans 8, 9, 10 use fakes behind them until the real feature is built.
@@ -74,5 +75,5 @@ The plans written earlier (photo-send-flow, settings-screen, attention-notificat
 - `previewExists` (photo-send-flow PLAN-1 section 7): true in Preview; on 取り消す set it true before `deleteItem`; after `createItem` set it false (outbox-queue PLAN-1 section 4).
 - Recipient delete (settings-screen PLAN-2): call `SettingsRepository.deleteRecipient` first, then `OutboxRepository.onRecipientDeleted(id)`; delete dialog count from `countForRecipient(id)` (outbox-queue PLAN-2 section 5).
 - Test send (settings-screen PLAN-3): `SmtpSender.sendTest` writes TEST_OK / TEST_FAILED itself; on success the ViewModel calls `OutboxRepository.resumeAfterSetupFix()`. SMTP save (PLAN-1) also calls `resumeAfterSetupFix()`.
-- 今すぐ再送 (PLAN-4) calls `resendNow(itemId)`; `Waiting` shows "順番待ちです。しばらくお待ちください".
+- 今すぐ再送 (PLAN-4) calls `resendNow(itemId)`; `Waiting` shows the Material3 `Snackbar` (`SnackbarDuration.Short`, no action) "順番待ちです。しばらくお待ちください"; no other feedback when a resend starts (Q57).
 - 60 s foreground cap: enforced inside `SmtpSender` (authoritative); the `withTimeoutOrNull(FG_SEND_TIMEOUT_MS)` in photo-send-flow PLAN-3 is a harmless backstop (null = timeout).
