@@ -130,6 +130,10 @@ class MainActivity : Activity() {
         }
         msg.setContent(mp)
         msg.sentDate = now
+        // ネットワーク前にMIME直列化だけ行い、DataContentHandler/mailcapの解決をR8ビルドで検証する
+        val dry = ByteArrayOutputStream()
+        msg.writeTo(dry)
+        Log.i("SpikeResult", "SERIALIZE_OK bytes=${dry.size()}")
         Transport.send(msg)
     }
 }
