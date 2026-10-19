@@ -11,8 +11,7 @@ Resume point for a fresh conversation. Updated 2026-10-18.
 6. Working Notes
 
 ## 1. Status
-- Phase: specification complete; PLANs written for 8 features (see `docs/plans/README.md`); implementation not started (no source code).
-- Pending PLANs (write only after spike result + user consult): `mail-composition-smtp`, `outbox-queue`, `outbox-worker`.
+- Phase: specification and all PLANs complete (11 features, see `docs/plans/README.md`); spike DONE (R8 release mail send passed on API 26 emulator + M06; `docs/plans/smtp-send-spike/RESULT.md`). Implementation of the app not started.
 - Agent set: lite (`designer-lite`, `developer-lite`, `reviewer-lite`). Declared in `CLAUDE.md`.
 - Git: local repo on `main`, no remote. All docs committed (one file per commit, Japanese messages).
 - `docs/QA.md`: Q1-Q50 all resolved. Q1, Q2, Q8, Q10 are obsolete (GAS dropped).
@@ -38,10 +37,9 @@ Resume point for a fresh conversation. Updated 2026-10-18.
 - Not adopted ideas (can be reopened): QR-code settings import, screen-keep-on, send-to-everyone, pre-send confirmation dialog.
 
 ## 5. Next Step
-1. Implement `docs/plans/smtp-send-spike/PLAN.md` first (needs user-supplied Gmail app password in git-ignored `spike.local.properties`, API 26-level emulator, Android 14/15 device). Record result in `docs/plans/smtp-send-spike/RESULT.md`.
-2. Consult the user with the spike result, then have developer-lite write the 3 pending PLANs (if spike fails, revisit library choice Q30 first).
-3. Implement app-foundation, settings-storage, camera-capture, then the rest per `docs/plans/README.md`. Parts depending on pending features are BLOCKED and use fakes.
-4. Follow dev-workflow section 7 (feature branches, `--no-ff` merge, push only with user confirmation).
+1. Implement per `docs/plans/README.md` order: app-foundation -> settings-storage and camera-capture -> mail-composition-smtp -> outbox-queue -> outbox-worker -> real wiring of photo-send-flow / settings-screen / attention-notifications -> acceptance-verification. developer-lite implements, reviewer-lite reviews.
+2. Follow dev-workflow section 7 (feature branch per feature, `--no-ff` merge, push only with user confirmation).
+3. Spike tooling: `spike/run-spike.sh`, AVD `spike26` (API 26), device M06 (serial M06-SERIAL). `spike.local.properties` (git-ignored) holds Gmail credentials; never read or commit it.
 
 ## 6. Working Notes
 - The user prefers questions as selectable options (up to 4 at a time) with a recommendation; recommended option listed first.
