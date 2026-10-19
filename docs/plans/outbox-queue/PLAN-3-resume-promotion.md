@@ -41,7 +41,7 @@ The slot test and the update share one transaction, so a concurrent `createItem`
 - `resendNow(itemId): ResendOutcome`:
   1. Load the row; missing -> `NotAllowed`.
   2. Always write the log line `RESEND_REQUESTED` (recipient name) for a permitted tap (not for `NotAllowed`).
-  3. ATTENTION and reason != RECIPIENT_DELETED: set `resendPending = true`, `promote()`; if this item was promoted -> `Started`, else `Waiting` (UI shows "順番待ちです。しばらくお待ちください").
+  3. ATTENTION and reason != RECIPIENT_DELETED: set `resendPending = true`, `promote()`; if this item was promoted -> `Started`, else `Waiting` (the UI shows the Material3 `Snackbar`, `SnackbarDuration.Short`, no action button, "順番待ちです。しばらくお待ちください" in the hidden settings; the repository only returns the outcome). For `Started` the UI shows nothing: no other resend feedback, the row simply becomes 待機中 (ds 7.5, Q57).
   4. WAITING and phase QUEUED: `retryStartMillis = now` (restarts the 24 h window), then `scheduler.triggerNow()` -> `Started`.
   5. WAITING in `CANCEL_WINDOW`, `SENDING_FG`, `SENDING_BG`, or ATTENTION with RECIPIENT_DELETED -> `NotAllowed` (no log line; UI buttons are already disabled).
 - `resumeAfterSetupFix()`: called by settings-screen PLAN-1 after a successful SMTP save and by PLAN-3 after a successful test send. Sets `resendPending = true` on all ATTENTION rows with reasons AUTH / PERMANENT / RETRY_EXPIRED (one UPDATE), then `promote()`. No `RESEND_REQUESTED` line (that line is only for manual taps). If no row qualifies this is a no-op; it also calls `scheduler.enqueueDefault()` when any `WAITING / QUEUED` row exists (a stalled backoff is not reset by this call; only explicit `triggerNow` paths reset it).
