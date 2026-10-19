@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- カメラ本体 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M30,40h10l3,-5h22l3,5h10a4,4 0,0 1,4 4v28a4,4 0,0 1,-4 4H30a4,4 0,0 1,-4 -4V44a4,4 0,0 1,4 -4z" />
+    <!-- レンズ -->
+    <path
+        android:fillColor="#6750A4"
+        android:pathData="M54,58m-10,0a10,10 0,1 1,20 0a10,10 0,1 1,-20 0" />
+</vector>

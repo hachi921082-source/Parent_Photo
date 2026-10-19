@@ -1,5 +1,7 @@
 spike.local.properties
+*.local.properties
 local.properties
+.env
 .gradle/
 build/
 *.apk
