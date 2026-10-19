@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.example.parentphoto.ParentPhotoApp
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
 
 /**
@@ -27,9 +28,26 @@ class OutboxWorker(appContext: Context, params: WorkerParameters) : CoroutineWor
             setupRequired = { settingsRepo.isSetupRequired() },
             photoFile = { files.file(it) },
         )
-        return when (runner.run()) {
-            RunOutcome.SUCCESS -> Result.success()
-            RunOutcome.RETRY -> Result.retry()
-        }
+        return toResult { runner.run() }
+    }
+
+    companion object {
+        /**
+         * 実行結果を WorkManager の Result に読み替える。
+         * 想定外の例外(DB の失敗など)はワーカーを失敗扱いにせず retry にする(写真を待機中のまま残し、バックオフ後に再実行)。
+         * Logcat には例外のクラス名だけを出す(メッセージにアドレス等が含まれ得るため)。キャンセルはそのまま伝える。
+         */
+        internal suspend fun toResult(run: suspend () -> RunOutcome): Result =
+            try {
+                when (run()) {
+                    RunOutcome.SUCCESS -> Result.success()
+                    RunOutcome.RETRY -> Result.retry()
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                WorkerLog.i("run failed: ${e.javaClass.name}")
+                Result.retry()
+            }
     }
 }
