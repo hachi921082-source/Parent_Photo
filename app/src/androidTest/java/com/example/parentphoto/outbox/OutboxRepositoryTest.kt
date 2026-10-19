@@ -10,6 +10,10 @@ import com.example.parentphoto.mail.SendLogResult
 import com.example.parentphoto.notify.AttentionAlerter
 import com.example.parentphoto.settings.Recipient
 import com.example.parentphoto.settings.Settings
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -31,6 +35,7 @@ class OutboxRepositoryTest {
     private lateinit var preview: File
     private lateinit var repo: OutboxRepository
     private var now = 1_000_000L
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private val taro = Recipient("r1", "太郎", "taro@example.com")
     private val hanako = Recipient("r2", "花子👩", "hanako@example.com")
@@ -59,11 +64,12 @@ class OutboxRepositoryTest {
         root = File(ctx.cacheDir, "outbox_test_写真").apply { deleteRecursively(); mkdirs() }
         files = OutboxFiles(root)
         preview = File(root, "preview.jpg").apply { writeBytes(ByteArray(1234) { it.toByte() }) }
-        repo = OutboxRepository(db, files, settings, scheduler, alerter, clock = { now })
+        repo = OutboxRepository(db, files, settings, scheduler, alerter, scope, clock = { now })
     }
 
     @After
     fun tearDown() {
+        scope.cancel()
         db.close()
         root.deleteRecursively()
     }
@@ -311,10 +317,16 @@ class OutboxRepositoryTest {
     fun deleteManualLogsAndCountForRecipient() = runBlocking {
         val a = create("r2"); create("r2"); create("r1")
         assertEquals(2, repo.countForRecipient("r2"))
+        // 猶予中の行は消さない
+        repo.deleteManual(a)
+        assertEquals(2, repo.countForRecipient("r2"))
+        assertTrue(logs().isEmpty())
+        repo.markQueued(a, MailResult.Offline)
         repo.deleteManual(a)
         assertEquals(1, repo.countForRecipient("r2"))
         assertFalse(files.file(a).exists())
         assertEquals(SendLogResult.DELETED_MANUAL, logs()[0].result)
+        assertEquals(SendLogResult.QUEUED_OFFLINE, logs()[1].result)
         assertEquals("花子👩", logs()[0].recipientName)
     }
 }
