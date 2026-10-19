@@ -9,6 +9,9 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.example.parentphoto.ParentPhotoApp
 import com.example.parentphoto.R
 import com.example.parentphoto.ui.MainActivity
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -33,6 +36,13 @@ class AttentionNotifierTest {
         if (android.os.Build.VERSION.SDK_INT >= 33) {
             InstrumentationRegistry.getInstrumentation().uiAutomation
                 .grantRuntimePermission(ctx.packageName, android.Manifest.permission.POST_NOTIFICATIONS)
+        }
+        // アプリ起動時の監視(要確認0件で cancel)が投稿直後の通知を消さないよう、起動処理が落ち着くまで待つ
+        runBlocking {
+            val outbox = (ctx.applicationContext as ParentPhotoApp).outboxRepository
+            outbox.awaitRecovery()
+            outbox.attentionCount.first()
+            delay(300)
         }
         notifier.cancel()
     }
