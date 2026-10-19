@@ -65,6 +65,8 @@ class OutboxRepositoryTest {
         files = OutboxFiles(root)
         preview = File(root, "preview.jpg").apply { writeBytes(ByteArray(1234) { it.toByte() }) }
         repo = OutboxRepository(db, files, settings, scheduler, alerter, scope, clock = { now })
+        // createItem は起動時の復旧の完了を待つので、先に(空の)復旧を済ませる
+        runBlocking { repo.startRecovery().join() }
     }
 
     @After
