@@ -12,7 +12,7 @@ import kotlinx.coroutines.flow.first
  * WorkManager が起こしたプロセスでも ParentPhotoApp.onCreate で復旧が始まり、OutboxRunner がその完了を待つ。
  *
  * キャンセル(REPLACE・回線喪失)は例外としてそのまま伝わり、取り込んだ行は送信待ちに戻る(PLAN-1 3)。
- * TODO(PLAN-2): 登録(一意ワーク名・回線の制約・15分からの指数バックオフ)は OutboxScheduler が行う。
+ * 登録(一意ワーク名・回線の制約・15分からの指数バックオフ)は OutboxScheduler が行う。
  */
 class OutboxWorker(appContext: Context, params: WorkerParameters) : CoroutineWorker(appContext, params) {
 
