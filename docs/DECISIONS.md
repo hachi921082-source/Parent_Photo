@@ -92,3 +92,6 @@
 - Feedback (Q57): only two Snackbars to avoid noise; other actions are visible through list changes.
 - Notification (Q56): BigText because the text is long; onlyAlertOnce so repeated 要確認 events do not ring again; not auto-cancelled because it is cleared only when the 要確認 count is 0.
 - Rejected: following the system font scale (overflow risk), live validation (more complex, no benefit here).
+
+### D15 amendment (Q59-Q62, 2026-10-19)
+- Gaps found while syncing plans were closed: host length blocked silently, one icon color on all screens that show it, the dirty-form dialog treats outside tap and back as "stay" (never loses edits), and onResume never interrupts an in-progress photo flow (discarding or switching away from a captured photo or a send is worse than a stale permission state, which the normal exit re-checks).
