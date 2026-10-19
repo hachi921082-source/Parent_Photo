@@ -11,18 +11,30 @@ Resume point for a fresh conversation. Updated 2026-10-19.
 6. Working Notes
 
 ## 1. Status
-- Phase: specification and all PLANs complete (11 features, see `docs/plans/README.md`); spike DONE (R8 release mail send passed on API 26 emulator + M06; `docs/plans/smtp-send-spike/RESULT.md`). Implementation: app-foundation DONE (merged to main; compile/targetSdk 35 due to AGP 8.7.3; no Gradle wrapper, run Gradle 8.9 directly with Android Studio jbr; release signed with debug key, final signing undecided). settings-storage DONE (merged; validation messages live in strings.xml err_* via ValidationError enum). camera-capture DONE (merged). Deferred to photo-send-flow wiring manual checks: permission deny / never-ask-again, landscape capture, CameraX bind failure. attention-notifications DONE (merged). Pending wiring: outbox-queue must call AttentionNotifier.show(overflow) on 要確認 transition and cancel() at 0 items (check in its review); photo-send-flow must call NotificationPermissionRequester.requestIfNeeded after camera permission settles. Pending manual check on API33+ device: permission dialog once only, no crash without permission, tap brings app to front. mail-composition-smtp DONE (merged; ItemId=String; SmtpSettingsSource extracted). MUST recover in acceptance-verification: real 1- and 2-photo send via R8 release APK on both device classes, 587 STARTTLS, no password/body in Logcat. Next: outbox-queue (check it wires AttentionNotifier.show/cancel).
+- Phase: implementation in progress. 5 of 10 features DONE and merged to `main` (`docs/plans/README.md` Status column).
+
+| Feature | State | Notes |
+|---|---|---|
+| app-foundation | done | compile/targetSdk 35 (AGP 8.7.3 limit, user-confirmed); release signed with debug key (final signing decided later, user-confirmed) |
+| settings-storage | done | validation messages in `strings.xml` `err_*` via `ValidationError` enum (not Validators constants) |
+| camera-capture | done | |
+| attention-notifications | done | `AttentionNotifier` + `NotificationPermissionRequester` provided; callers not wired yet |
+| mail-composition-smtp | done | `ItemId = String` (matches `outbox_item.id` UUID); `SmtpSettingsSource` interface extracted, implemented by `SettingsRepository`; sendForeground checks recipient before offline (Q63) |
+| outbox-queue | next | |
+| outbox-worker, photo-send-flow, settings-screen, acceptance-verification | not started | |
+
 - Agent set: lite (`designer-lite`, `developer-lite`, `reviewer-lite`). Declared in `CLAUDE.md`.
-- Git: local repo on `main`, no remote. All docs committed (one file per commit, Japanese messages).
-- `docs/QA.md`: Q1-Q62 all resolved. Q1, Q2, Q8, Q10 are obsolete (GAS dropped).
+- Git: local repo on `main`, no remote, nothing pushed. Clean working tree.
+- `docs/QA.md`: Q1-Q63 all resolved. Q1, Q2, Q8, Q10 are obsolete (GAS dropped).
 
 ## 2. Where Things Are
 - `CLAUDE.md`: app summary, agent set, status line.
 - `docs/spec.md`: confirmed spec (7 sections).
-- `docs/detailed-spec.md`: implementation-level spec (state machine, UI strings, SMTP, outbox, data model, settings, checklist). Read its index, then only the needed section.
+- `docs/detailed-spec.md` (ds): implementation-level spec. Read its index, then only the needed section.
 - `docs/QA.md`: every user decision with the chosen option.
-- `docs/DECISIONS.md`: rationale and accepted risks (D1-D13).
-- `docs/plans/README.md`: plan index with status.
+- `docs/DECISIONS.md`: rationale and accepted risks (D1-D15).
+- `docs/plans/README.md`: plan index with order, dependencies, status.
+- Code: single module `app/`, package `com.example.parentphoto` (`camera/`, `mail/`, `notify/`, `settings/`, `ui/`, `util/`).
 
 ## 3. Key Decisions
 - Android app only; no GAS/Drive. Direct SMTP via `com.sun.mail:android-mail` + `android-activation` (Gmail, default `smtp.gmail.com:465`).
@@ -32,22 +44,53 @@ Resume point for a fresh conversation. Updated 2026-10-19.
 - UI: portrait lock, min API 26, shutter standard size, other father-facing buttons 56/96/128 dp (default 96), text 28/36 sp, settings via 3 s long press (no PIN).
 
 ## 4. Open Items
-- Accepted risks: credentials on the father's phone (D10), no expiry for 要確認 until overflow (D12).
-- Remaining `[ASSUMPTION]` tags in `docs/detailed-spec.md` are accepted as written (Q8 batch decision); a conflict found during implementation = new question to the user, never decided by the agent.
-- Spike gaps: API 29 (sense4) not tested; M06 had 2 of 3 "Exception reading response" on 2-attachment sends (accepted, D14).
+Carry-overs that later features MUST handle (check them in the named feature's review):
+- outbox-queue: call `AttentionNotifier.show(overflowDeleted)` on transition to 要確認 and `cancel()` when 要確認 count reaches 0. Build the outbox container in `ParentPhotoApp`.
+- photo-send-flow:
+  - wire `CameraView` / `CameraController` / `CameraPermission` into the state machine;
+  - call `PreviewFiles.deleteAll()` at startup;
+  - call `NotificationPermissionRequester.requestIfNeeded` (via `ActivityResultLauncher`) after camera permission settles;
+  - badges are pill-shaped (`CircleShape`).
+- Manual checks after photo-send-flow wiring: camera permission deny / never-ask-again, landscape capture, CameraX bind failure.
+- Manual checks on an API 33+ device (only API 26 AVD exists; M06 is Android 16):
+  - notification permission dialog appears once only, and not again after deny + restart;
+  - no crash on `show` without permission;
+  - notification appears after grant;
+  - tap brings the app to front with the camera screen kept.
+- acceptance-verification MUST recover the unmet mail-composition-smtp Done-when:
+  - real 1- and 2-photo send via R8 release APK on both device classes, attachments readable;
+  - 587 STARTTLS;
+  - no password/body in Logcat.
+
+Other open items:
+- Release keystore not decided (debug key for now).
+- No Gradle wrapper (see section 6 for how to build).
+- Accepted risks: credentials on the father's phone (D10), no expiry for 要確認 until overflow (D12), M06 "Exception reading response" false failures on 2-attachment sends (D14).
+- Remaining `[ASSUMPTION]` tags in ds are accepted as written; a conflict found during implementation = new question to the user, never decided by the agent.
+- Spike gap: API 29 (sense4) not tested.
 - Not adopted ideas (can be reopened): QR-code settings import, screen-keep-on, send-to-everyone, pre-send confirmation dialog.
+- Known minor: name length check counts UTF-16 units (emoji = 2); unused mailcap `pickFirsts` in packaging (harmless).
 
 ## 5. Next Step
-1. Implement per `docs/plans/README.md` order: app-foundation -> settings-storage and camera-capture -> mail-composition-smtp -> outbox-queue -> outbox-worker -> real wiring of photo-send-flow / settings-screen / attention-notifications -> acceptance-verification. developer-lite implements, reviewer-lite reviews.
-2. Decision (user): implement ALL features sequentially, one at a time, no parallel worktrees. Order: app-foundation -> settings-storage -> camera-capture -> attention-notifications -> mail-composition-smtp -> outbox-queue -> outbox-worker -> photo-send-flow -> settings-screen -> acceptance-verification. Use one conversation per feature; read only the feature PLAN and the ds sections it cites. UI work before outbox wiring uses fakes.
-3. Follow dev-workflow section 7 (feature branch per feature, `--no-ff` merge, push only with user confirmation).
-4. Spike tooling: `spike/run-spike.sh`, AVD `spike26` (API 26), device M06 (serial M06-SERIAL). `spike.local.properties` (git-ignored) holds Gmail credentials; never read or commit it.
+1. Implement outbox-queue (`docs/plans/outbox-queue/`, has several PLAN files). Remaining order: outbox-queue -> outbox-worker -> photo-send-flow -> settings-screen -> acceptance-verification. Strictly sequential, one feature at a time, no parallel worktrees (user decision).
+2. Per feature, follow this cycle (dev-workflow section 7):
+   1. `git checkout -b feature/<name>`.
+   2. developer-lite implements.
+   3. reviewer-lite reviews; fix loop via developer-lite if needed.
+   4. `git merge --no-ff` to `main` and delete the branch.
+   5. Update the `docs/plans/README.md` Status column and this file.
+   6. Push only with user confirmation.
 
 ## 6. Working Notes
-- The user prefers questions as selectable options (up to 4 at a time) with a recommendation; recommended option listed first.
-- The user does not want agents to decide user-facing matters: subagents return questions; the main Claude asks via AskUserQuestion. Specs must leave no discretion (vague wording, undefined UI were audited and fixed: Q51-Q62, D15).
-- Check label wording when relaying answers to subagents (a Q24 answer was once mis-relayed and corrected).
-- Docs are English only; chat reports to the user are Japanese. Commits: one file per commit, Japanese messages describing the file's role, trailer `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`. Never push without user confirmation.
-- Token saving: one conversation per feature; read only the feature PLAN and the ds sections it cites; build/logcat output reduced to pass/fail plus a few lines.
-- Environment (2026-10-19): emulator `spike26` (API 26) is running (emulator-5570); real device M06 (serial M06-SERIAL, Android 16) is NOT connected now, reconnect with USB debugging approval when real-device checks are needed. adb: `~/AppData/Local/Android/Sdk/platform-tools/adb.exe`.
-- External review (Gemini) points were already applied (WorkManager policy, JavaMail spike, BackHandler).
+- Questions to the user: selectable options (up to 4) with a recommendation listed first. Agents never decide user-facing or spec-ambiguous matters: subagents return questions; the main Claude asks via AskUserQuestion and records the answer in `docs/QA.md`.
+- Subagent prompts that worked: tell the agent the branch is already checked out; give it the Gradle/adb paths; tell it to read only the PLAN and the ds sections it cites; forbid reading `spike.local.properties` / `local.properties`; forbid real mail sends; for temp test harnesses in `src/`, use Edit/Write, not Bash overwrites (blocked by the permission classifier), and revert them.
+- Build: Gradle 8.9 run directly, `~/.gradle/wrapper/dists/gradle-8.9-bin/*/gradle-8.9/bin/gradle`, with `JAVA_HOME='/c/Program Files/Android/Android Studio/jbr'`. adb: `~/AppData/Local/Android/Sdk/platform-tools/adb.exe`.
+- Devices: emulator `spike26` (API 26) is emulator-5570. Real device M06 (serial M06-SERIAL, Android 16) is not connected; reconnect it with USB debugging approval when needed.
+- Docs are English only; chat reports to the user are in Japanese.
+- Commits:
+  - one file per commit, with a Japanese message describing the file's role;
+  - trailer `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>` (model switched to Opus on 2026-10-19);
+  - never push without user confirmation;
+  - known slip: commit `4cad22c` bundled `QA.md` + `plans/README.md` + `HANDOFF.md`; not yet split, user's call.
+- Token saving: one conversation per feature; build/logcat output reduced to pass/fail plus a few lines.
+- `spike.local.properties` (git-ignored) holds Gmail credentials; never read or commit it.
