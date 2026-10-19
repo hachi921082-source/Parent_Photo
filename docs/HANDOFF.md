@@ -11,7 +11,7 @@ Resume point for a fresh conversation. Updated 2026-10-19.
 6. Working Notes
 
 ## 1. Status
-- Phase: implementation in progress. 5 of 10 features DONE and merged to `main` (`docs/plans/README.md` Status column).
+- Phase: implementation in progress. 6 of 10 features DONE and merged to `main` (`docs/plans/README.md` Status column).
 
 | Feature | State | Notes |
 |---|---|---|
@@ -20,8 +20,9 @@ Resume point for a fresh conversation. Updated 2026-10-19.
 | camera-capture | done | |
 | attention-notifications | done | `AttentionNotifier` + `NotificationPermissionRequester` provided; callers not wired yet |
 | mail-composition-smtp | done | `ItemId = String` (matches `outbox_item.id` UUID); `SmtpSettingsSource` interface extracted, implemented by `SettingsRepository`; sendForeground checks recipient before offline (Q63) |
-| outbox-queue | next | |
-| outbox-worker, photo-send-flow, settings-screen, acceptance-verification | not started | |
+| outbox-queue | done | `AttentionAlerter` interface extracted from `AttentionNotifier` (test seam); `ParentPhotoApp` builds `settingsRepository`/`outboxRepository` lazily, `appScope` (SupervisorJob + logging handler) runs observers and startup recovery; `createItem` awaits recovery; `NoOpWorkScheduler` placeholder; androidTest 73/73 x3 |
+| outbox-worker | next | |
+| photo-send-flow, settings-screen, acceptance-verification | not started | |
 
 - Agent set: lite (`designer-lite`, `developer-lite`, `reviewer-lite`). Declared in `CLAUDE.md`.
 - Git: local repo on `main`, no remote, nothing pushed. Clean working tree.
@@ -45,12 +46,21 @@ Resume point for a fresh conversation. Updated 2026-10-19.
 
 ## 4. Open Items
 Carry-overs that later features MUST handle (check them in the named feature's review):
-- outbox-queue: call `AttentionNotifier.show(overflowDeleted)` on transition to 要確認 and `cancel()` when 要確認 count reaches 0. Build the outbox container in `ParentPhotoApp`.
+- outbox-worker:
+  - replace `NoOpWorkScheduler` in `ParentPhotoApp` with `OutboxScheduler` (`TODO(outbox-worker)`);
+  - worker calls `awaitRecovery()` first;
+  - run order: `expireOld` -> SetupRequired => `markAllQueuedAttention` -> `queuedSnapshot` + `BatchPlanner.plan` -> `claimBatch` -> `finishBatch*`; missing recipient => `markRecipientMissing`; cancellation => `releaseBatch`;
+  - `triggerNow` / `enqueueDefault` semantics per ds 7.4 and outbox-queue PLAN-3 section 5.
 - photo-send-flow:
+  - get repositories via `(application as ParentPhotoApp).outboxRepository` / `.settingsRepository`; pass the same `outboxRepository` as `SmtpSender` `source` and `sendLog`;
+  - Loading waits for `recoveryDone` (primary gate; `createItem` wait is the backup);
+  - keep the `setPreviewExists` update rules (outbox-queue PLAN-1 section 4);
+  - run the outbox-queue PLAN.md section 5 end-to-end check (enqueue, foreground success/failure, kill during undo window) with the fake scheduler;
   - wire `CameraView` / `CameraController` / `CameraPermission` into the state machine;
   - call `PreviewFiles.deleteAll()` at startup;
   - call `NotificationPermissionRequester.requestIfNeeded` (via `ActivityResultLauncher`) after camera permission settles;
   - badges are pill-shaped (`CircleShape`).
+- settings-screen: call `resumeAfterSetupFix()` after SMTP save success and test-send success; show Snackbar "順番待ちです。しばらくお待ちください" when `resendNow` returns `Waiting`; call `onRecipientDeleted` after `SettingsRepository.deleteRecipient`.
 - Manual checks after photo-send-flow wiring: camera permission deny / never-ask-again, landscape capture, CameraX bind failure.
 - Manual checks on an API 33+ device (only API 26 AVD exists; M06 is Android 16):
   - notification permission dialog appears once only, and not again after deny + restart;
@@ -72,7 +82,7 @@ Other open items:
 - Known minor: name length check counts UTF-16 units (emoji = 2); unused mailcap `pickFirsts` in packaging (harmless).
 
 ## 5. Next Step
-1. Implement outbox-queue (`docs/plans/outbox-queue/`, has several PLAN files). Remaining order: outbox-queue -> outbox-worker -> photo-send-flow -> settings-screen -> acceptance-verification. Strictly sequential, one feature at a time, no parallel worktrees (user decision).
+1. Implement outbox-worker (`docs/plans/outbox-worker/`, 2 sub-plans; outbox-queue pattern worked: one developer-lite agent continued via SendMessage per sub-plan, then one reviewer-lite pass over the whole feature). Remaining order: outbox-worker -> photo-send-flow -> settings-screen -> acceptance-verification. Strictly sequential, one feature at a time, no parallel worktrees (user decision).
 2. Per feature, follow this cycle (dev-workflow section 7):
    1. `git checkout -b feature/<name>`.
    2. developer-lite implements.
