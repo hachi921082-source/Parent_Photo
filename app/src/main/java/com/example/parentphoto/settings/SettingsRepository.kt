@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.example.parentphoto.mail.SmtpSettingsSource
 import com.example.parentphoto.util.Constants
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
@@ -27,9 +28,9 @@ private val Context.settingsDataStore: DataStore<Preferences> by preferencesData
 class SettingsRepository(
     private val store: DataStore<Preferences>,
     private val crypto: PasswordCrypto = PasswordCrypto(),
-) {
+) : SmtpSettingsSource {
     /** 設定の流れ。最初の発行がLoading終了の合図。 */
-    val settings: Flow<Settings> = store.data
+    override val settings: Flow<Settings> = store.data
         .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
         .map { it.toSettings() }
 
@@ -53,7 +54,7 @@ class SettingsRepository(
     }
 
     /** 復号したパスワード。未設定または復号不能なら null。ログに出さないこと。 */
-    suspend fun readPassword(): String? {
+    override suspend fun readPassword(): String? {
         val cipher = store.data.first()[K_CIPHER].orEmpty()
         return crypto.decrypt(cipher)
     }
