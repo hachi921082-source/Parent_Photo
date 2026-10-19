@@ -31,7 +31,7 @@ All mails arrived; JPEGs open; both same-name attachments present in 2-attachmen
 - API 36: 193633 (1 att), 193642 (2 att), 193654 (2 att)
 
 ## 5. False-failure observation (accepted risk)
-M06 reported `MessagingException: Exception reading response` in 2 runs (193642 and 193716-era run at 19:37) but mails 193642 and 193654 were delivered: the server likely dropped the connection after accepting DATA. A failure result can therefore be a false failure; retrying may produce duplicate mails. User decision: retry and accept possible duplicates (to be recorded in DECISIONS.md).
+M06 reported `MessagingException: Exception reading response` in 2 runs (193642 and about 193701). The 193642 mail was delivered (false failure: the server likely dropped the connection after accepting DATA); the 193701 mail did not arrive (true failure). A failure result can therefore be a false failure; retrying may produce duplicate mails. User decision: retry and accept possible duplicates (to be recorded in DECISIONS.md).
 
 ## 6. Required spec changes (for main Claude)
 - ds 11.4: add packaging excludes `META-INF/LICENSE.md` and `META-INF/NOTICE.md` (duplicate between android-mail and android-activation fails the build).
