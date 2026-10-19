@@ -114,6 +114,43 @@ interface OutboxDao {
     )
     suspend fun pendingResend(): List<OutboxItemEntity>
 
+    // 枠待ち(今すぐ再送・設定保存の後、枠が空くのを待つ要確認)の件数。繰り上げの監視に使う
+    @Query("SELECT COUNT(*) FROM outbox_item WHERE state = 'ATTENTION' AND resendPending = 1")
+    fun pendingResendCount(): Flow<Int>
+
+    // 今すぐ再送: 宛先削除以外の要確認を枠待ちにする
+    @Query(
+        """
+        UPDATE outbox_item SET resendPending = 1
+        WHERE id = :id AND state = 'ATTENTION' AND attentionReason != 'RECIPIENT_DELETED'
+        """,
+    )
+    suspend fun setResendPending(id: String): Int
+
+    // 設定保存・テスト成功: 再開できる理由の要確認をまとめて枠待ちにする(宛先削除は除く)
+    @Query(
+        """
+        UPDATE outbox_item SET resendPending = 1
+        WHERE state = 'ATTENTION' AND attentionReason IN ('AUTH', 'PERMANENT', 'RETRY_EXPIRED')
+        """,
+    )
+    suspend fun markResumablePending(): Int
+
+    // 繰り上げ: 要確認 -> 待機中・送信待ち。24時間の起点を今にする
+    @Query(
+        """
+        UPDATE outbox_item
+        SET state = 'WAITING', phase = 'QUEUED', retryStartMillis = :now,
+            attentionSinceMillis = NULL, attentionReason = NULL, resendPending = 0
+        WHERE id = :id AND state = 'ATTENTION'
+        """,
+    )
+    suspend fun promoteRow(id: String, now: Long): Int
+
+    // 待機中・送信待ちの今すぐ再送: 24時間の起点だけを今にする
+    @Query("UPDATE outbox_item SET retryStartMillis = :now WHERE id = :id AND state = 'WAITING' AND phase = 'QUEUED'")
+    suspend fun restartWindow(id: String, now: Long): Int
+
     // 送り先削除の確認ダイアログ用(状態を問わない)
     @Query("SELECT COUNT(*) FROM outbox_item WHERE recipientId = :recipientId")
     suspend fun countForRecipient(recipientId: String): Int
