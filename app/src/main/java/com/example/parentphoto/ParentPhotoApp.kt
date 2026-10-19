@@ -3,12 +3,14 @@ package com.example.parentphoto
 import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.util.Log
 import com.example.parentphoto.notify.AttentionNotifier
 import com.example.parentphoto.outbox.NoOpWorkScheduler
 import com.example.parentphoto.outbox.OutboxDatabase
 import com.example.parentphoto.outbox.OutboxFiles
 import com.example.parentphoto.outbox.OutboxRepository
 import com.example.parentphoto.settings.SettingsRepository
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -20,8 +22,12 @@ import kotlinx.coroutines.SupervisorJob
  */
 class ParentPhotoApp : Application() {
 
-    // プロセスと同じ寿命のスコープ。1つの処理が失敗しても他を止めない
-    val appScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    // プロセスと同じ寿命のスコープ。1つの処理が失敗しても他を止めず、取りこぼした例外もログに残すだけでアプリを落とさない
+    val appScope: CoroutineScope = CoroutineScope(
+        SupervisorJob() + Dispatchers.Default + CoroutineExceptionHandler { _, e ->
+            Log.e(TAG_APP, "uncaught in appScope: ${e.javaClass.name}")
+        },
+    )
 
     val settingsRepository: SettingsRepository by lazy { SettingsRepository.create(this) }
 
@@ -58,5 +64,6 @@ class ParentPhotoApp : Application() {
 
     companion object {
         const val CHANNEL_ATTENTION = "attention"
+        private const val TAG_APP = "ParentPhoto/App"
     }
 }
