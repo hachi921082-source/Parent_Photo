@@ -38,8 +38,9 @@ Resume point for a fresh conversation. Updated 2026-10-18.
 
 ## 5. Next Step
 1. Implement per `docs/plans/README.md` order: app-foundation -> settings-storage and camera-capture -> mail-composition-smtp -> outbox-queue -> outbox-worker -> real wiring of photo-send-flow / settings-screen / attention-notifications -> acceptance-verification. developer-lite implements, reviewer-lite reviews.
-2. Follow dev-workflow section 7 (feature branch per feature, `--no-ff` merge, push only with user confirmation).
-3. Spike tooling: `spike/run-spike.sh`, AVD `spike26` (API 26), device M06 (serial M06-SERIAL). `spike.local.properties` (git-ignored) holds Gmail credentials; never read or commit it.
+2. Decision (user): implement ALL features sequentially, one at a time, no parallel worktrees. Order: app-foundation -> settings-storage -> camera-capture -> attention-notifications -> mail-composition-smtp -> outbox-queue -> outbox-worker -> photo-send-flow -> settings-screen -> acceptance-verification. Use one conversation per feature; read only the feature PLAN and the ds sections it cites. UI work before outbox wiring uses fakes.
+3. Follow dev-workflow section 7 (feature branch per feature, `--no-ff` merge, push only with user confirmation).
+4. Spike tooling: `spike/run-spike.sh`, AVD `spike26` (API 26), device M06 (serial M06-SERIAL). `spike.local.properties` (git-ignored) holds Gmail credentials; never read or commit it.
 
 ## 6. Working Notes
 - The user prefers questions as selectable options (up to 4 at a time) with a recommendation; recommended option listed first.
