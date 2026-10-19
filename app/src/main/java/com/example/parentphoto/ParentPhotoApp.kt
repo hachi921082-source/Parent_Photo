@@ -3,12 +3,31 @@ package com.example.parentphoto
 import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import com.example.parentphoto.notify.AttentionNotifier
+import com.example.parentphoto.outbox.NoOpWorkScheduler
+import com.example.parentphoto.outbox.OutboxDatabase
+import com.example.parentphoto.outbox.OutboxFiles
+import com.example.parentphoto.outbox.OutboxRepository
+import com.example.parentphoto.settings.SettingsRepository
 
 /**
  * アプリ全体の Application クラス。
- * 起動時に通知チャンネルを作成する。Room / WorkManager の遅延初期化は後続の機能で追加する。
+ * 起動時に通知チャンネルを作成する。設定・未送信キューはここで1つだけ作る(手動DI、初回使用時に生成)。
  */
 class ParentPhotoApp : Application() {
+
+    val settingsRepository: SettingsRepository by lazy { SettingsRepository.create(this) }
+
+    val outboxRepository: OutboxRepository by lazy {
+        OutboxRepository(
+            db = OutboxDatabase.create(this),
+            files = OutboxFiles(filesDir),
+            settings = settingsRepository.settings,
+            // TODO(outbox-worker): OutboxScheduler に差し替える
+            scheduler = NoOpWorkScheduler(),
+            notifier = AttentionNotifier(this),
+        )
+    }
 
     override fun onCreate() {
         super.onCreate()
