@@ -24,13 +24,13 @@ Until implemented, use fakes. Do not define Room/mail internals here.
 - Timers and the send job live in `viewModelScope`; they keep running in background (confirmed). If the process dies, startup recovery (pending outbox-queue) handles the item.
 
 ## 3. Feedback (`notify/Feedback`)
-- On entering Sent only (exactly once per entry; not replayed on return from background): `VibrationEffect.createOneShot(300, DEFAULT_AMPLITUDE)` via `Vibrator`/`VibratorManager`, and `ToneGenerator(STREAM_NOTIFICATION, 80)` `TONE_PROP_ACK` (about 200 ms; release the generator afterwards) together. If `AudioManager.ringerMode != RINGER_MODE_NORMAL`, vibration only. Permission `VIBRATE` in manifest.
+- On entering Sent only (exactly once per entry; not replayed on return from background): `VibrationEffect.createOneShot(300, DEFAULT_AMPLITUDE)` via `Vibrator`/`VibratorManager`, and `ToneGenerator(STREAM_NOTIFICATION, 80)` `startTone(TONE_PROP_ACK, 200)`, with the generator released (`release()`) 300 ms after `startTone` (delayed in the ViewModel/app scope, not on the main thread's blocking path), together. If `AudioManager.ringerMode != RINGER_MODE_NORMAL`, vibration only. Permission `VIBRATE` in manifest.
 - No feedback for QueuedNotice or worker deliveries.
 - Screen-keep-on is not adopted.
 
 ## 4. Tests
 - JVM with fakes: cancel returns to Preview and calls deleteItem; 3 s elapse transitions; success path; failure/offline path; 60 s timeout path with virtual time; no replay of feedback after background simulation.
-- Device: vibration and tone occur; silent mode gives vibration only.
+- Device: vibration and tone occur (tone 200 ms; generator released after 300 ms); silent mode gives vibration only.
 
 ## 5. Steps
 1. Fakes for the contracts above + ViewModel logic + tests.
