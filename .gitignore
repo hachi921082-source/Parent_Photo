@@ -1,0 +1,7 @@
+spike.local.properties
+local.properties
+.gradle/
+build/
+*.apk
+.idea/
+.kotlin/
