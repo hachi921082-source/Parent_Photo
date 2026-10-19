@@ -36,3 +36,6 @@ data class SendLogEntry(
 
 /** 待機中が上限(5件)に達しているため新しい項目を作れない(ds 2.4)。 */
 class OutboxFullException : IllegalStateException("outbox active cap reached")
+
+/** 要確認への移行1回分の結果。moved = 要確認にした件数、overflowDeleted = 上限超過で自動削除した件数。 */
+data class AttentionOutcome(val moved: Int, val overflowDeleted: Int)
