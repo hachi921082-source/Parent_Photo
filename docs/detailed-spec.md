@@ -183,6 +183,7 @@ Single `MainViewModel` holds `UiState`; Compose renders one screen per state. Na
 | PERMANENT | `SendFailedException` with 5xx reply (e.g., recipient rejected 550/553), `AddressException`, other non-auth 5xx | -> 要確認 (reason PERMANENT) immediately | REJECTED, OTHER |
 | Unknown exception | anything else | treated as TRANSIENT (retry until 24 h, then 要確認) [ASSUMPTION] | OTHER |
 - The father sees no cause (UI: QueuedNotice for every failure).
+- A `MessagingException: Exception reading response` (connection dropped after the data was sent) is classed NETWORK. The mail may already have been delivered, so a retry can deliver a duplicate. Accepted (DECISIONS.md D14).
 
 ### 6.4 Recording
 - Logcat: tag `ParentPhoto/Mail`; record class, code, exception class and message, SMTP reply code. Never log the password or the message body.
@@ -347,11 +348,13 @@ Standard Material sizes (not the father-facing button sizes). A scrollable singl
 ### 11.4 R8 / packaging
 - If `minifyEnabled true` for release, add keep rules: `-keep class javax.mail.** { *; }`, `-keep class com.sun.mail.** { *; }`, `-keep class javax.activation.** { *; }`, `-keep class com.sun.activation.** { *; }`, and `-dontwarn` for `java.awt.**`, `java.beans.**`, `javax.security.sasl.**`, `javax.naming.**`, `org.apache.harmony.**`.
 - Packaging: add `packaging { resources { pickFirsts += ["META-INF/mailcap", "META-INF/mimetypes.default", "META-INF/mailcap.default"] } }` if duplicate-resource errors occur (mailcap registration must remain so `image/jpeg` and `multipart/mixed` data handlers work).
+- Also exclude the duplicate license files: `packaging { resources { excludes += setOf("META-INF/LICENSE.md", "META-INF/NOTICE.md") } }` (android-mail and android-activation both ship them; the build fails otherwise). [VERIFIED by spike, `docs/plans/smtp-send-spike/RESULT.md`]
+- The keep rules above are REQUIRED: without them `msg.writeTo` fails with `no object DCH for MIME type multipart/mixed` in the R8 release build. The verified rule set is `spike/app/proguard-rules.pro`. [VERIFIED by spike]
 - Verify with a real release build: send a photo mail from a release APK on API 26+ before closing the feature.
 - Release artifact name includes date-time (e.g., `ParentPhoto_YYYYMMDD-HHMMSS.apk`) per global convention.
 
 ## 12. Acceptance checklist (numbering follows spec.md sections; "2-1" = spec section 2, item 1)
-- [ ] FIRST TASK: spike (6.0) passed on API 26-level and Android 14/15 with an R8 release build (multipart mail with JPEG attachment received).
+- [x] FIRST TASK: spike (6.0) passed on API 26-level and Android 14/15 with an R8 release build (multipart mail with JPEG attachment received).
 - [ ] 1 Overview: no server component; SMTP direct on Dispatchers.IO; portrait-locked UI; landscape-held shot gives a landscape photo.
 - [ ] 2-0 Launch: Loading state until settings/recovery ready (no SetupRequired flash); `cache/preview.jpg` and raw file deleted at cold start; Preview never restored.
 - [ ] 2-1 Camera: launches to full-screen preview; one standard-size shutter; Capturing state; capture/resize/camera-init failure returns to camera with "撮影できませんでした。もう一度お試しください" and a Logcat entry; permission denied shows guidance + "設定を開く"; permission dialog once per cold start; settings icon visible on Camera and Preview; photo kept when returning from settings.
