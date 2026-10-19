@@ -83,3 +83,12 @@
 - Decision (user): treat it as a retryable network error (6.3) and accept that a retry may deliver the same photo twice.
 - Reason: a duplicate is less harmful than a photo that never arrives; deduplication (fixed Message-ID) is not guaranteed on the receiving side.
 - Trade-off: the family may occasionally receive the same photo twice.
+
+## D15. UI audit: remove implementer discretion (Q51-Q58, 2026-10-19)
+- Trigger: a self-review of detailed-spec and plans for vague wording and undefined UI. The plans were faithful to the spec; the gaps were in the spec itself (layout, colors, feedback, edge states).
+- Principle: anything the father or the family can see must be written down with an exact value, string, or token, so developer-lite never decides it; Material3 default tokens were chosen to avoid a design round.
+- Font scale (Q51): the father's phone may use a large system font; sp scaling would overflow the fixed 28/36 sp layouts, so father screens ignore the scale. The settings screen follows it for the administrator's comfort.
+- Save button (Q53): "enabled when dirty and valid" made validation messages unreachable; chosen rule shows errors on press.
+- Feedback (Q57): only two Snackbars to avoid noise; other actions are visible through list changes.
+- Notification (Q56): BigText because the text is long; onlyAlertOnce so repeated 要確認 events do not ring again; not auto-cancelled because it is cleared only when the 要確認 count is 0.
+- Rejected: following the system font scale (overflow risk), live validation (more complex, no benefit here).
