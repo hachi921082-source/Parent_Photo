@@ -11,9 +11,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.job
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -42,10 +43,19 @@ class OutboxResumePromotionTest {
         val calls: MutableList<String> = Collections.synchronizedList(mutableListOf())
         // triggerNow の時点での行の状態(DBを先に書いているかの確認用)
         val statesAtTrigger: MutableList<Map<String, ItemState>> = Collections.synchronizedList(mutableListOf())
+        // 次の triggerNow で1回だけ例外を投げる(監視が止まらないことの確認用)
+        @Volatile var failNextTrigger = false
+        // triggerNow の中で実行する処理(ワーカーが直後に送って行を消す等の模擬)
+        @Volatile var onTrigger: (() -> Unit)? = null
         override fun enqueueDefault() { calls.add("enqueue") }
         override fun triggerNow() {
             statesAtTrigger.add(runBlocking { db.outboxDao().queuedItems().associate { it.id to it.state } })
             calls.add("trigger")
+            onTrigger?.invoke()
+            if (failNextTrigger) {
+                failNextTrigger = false
+                throw IllegalStateException("boom")
+            }
         }
     }
 
@@ -56,6 +66,8 @@ class OutboxResumePromotionTest {
     }
 
     private lateinit var scheduler: FakeScheduler
+    // 次に clock() が読まれたとき1回だけ実行する処理(状態が直前に変わる競合の模擬)
+    @Volatile private var clockHook: (() -> Unit)? = null
     private val alerter = FakeAlerter()
 
     @Before
@@ -64,12 +76,16 @@ class OutboxResumePromotionTest {
         root = File(ctx.cacheDir, "outbox_test3_写真").apply { deleteRecursively(); mkdirs() }
         files = OutboxFiles(root)
         scheduler = FakeScheduler()
-        repo = OutboxRepository(db, files, settings, scheduler, alerter, scope, clock = { now })
+        repo = OutboxRepository(db, files, settings, scheduler, alerter, scope, clock = {
+            clockHook?.let { clockHook = null; it() }
+            now
+        })
     }
 
     @After
     fun tearDown() {
-        scope.cancel()
+        // 監視が閉じたDBに触れないよう、止まりきってから閉じる
+        runBlocking { scope.coroutineContext.job.cancelAndJoin() }
         db.close()
         root.deleteRecursively()
     }
@@ -205,6 +221,38 @@ class OutboxResumePromotionTest {
         assertEquals(Phase.QUEUED, row("q")!!.phase)
         assertEquals(listOf("trigger"), scheduler.calls)
         assertEquals(listOf(SendLogResult.RESEND_REQUESTED), logs().map { it.result })
+    }
+
+    @Test
+    fun resendNowStartedEvenIfWorkerDeletesRowRightAfterPromotion() = runBlocking {
+        seed("x", state = ItemState.ATTENTION)
+        scheduler.onTrigger = { runBlocking { db.outboxDao().delete("x") } }
+        assertEquals(ResendOutcome.Started, repo.resendNow("x"))
+        assertNull(row("x"))
+    }
+
+    @Test
+    fun resendNowOnQueuedItemChangedMeanwhileIsNotAllowedWithoutLog() = runBlocking {
+        seed("q")
+        // 読み込みと更新の間にワーカーが取り込んだ
+        clockHook = { runBlocking { db.outboxDao().updatePhase("q", Phase.SENDING_BG) } }
+        assertEquals(ResendOutcome.NotAllowed, repo.resendNow("q"))
+        assertTrue(logs().isEmpty())
+        assertTrue(scheduler.calls.isEmpty())
+    }
+
+    @Test
+    fun promoteObserverSurvivesFailure() = runBlocking {
+        val active = seedActive(5)
+        seed("x", state = ItemState.ATTENTION, since = 10, pending = true)
+        seed("y", state = ItemState.ATTENTION, since = 20, pending = true)
+        repo.startObservers()
+        scheduler.failNextTrigger = true
+        repo.deleteManual(active[0])
+        waitUntil { row("x")?.state == ItemState.WAITING }
+        // 1回目の繰り上げで例外が出ても監視は生きていて、次の空きで y が進む
+        repo.deleteManual(active[1])
+        waitUntil { row("y")?.state == ItemState.WAITING }
     }
 
     // ---- 設定保存・テスト成功後の再開 ----
