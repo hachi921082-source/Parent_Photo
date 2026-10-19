@@ -15,16 +15,18 @@
 10. Notifications, haptics, sound
 11. Module layout, manifest, build notes
 12. Acceptance checklist (mapped to spec.md)
+(Subsections 3.4 Father-facing layout and colors, 9.8 Settings form details, 9.9 Accessibility text were added by the 2026-10-19 UI audit, Q51-Q58, D15.)
 
 ## 1. Scope and conventions
-- Android only (Kotlin, Jetpack Compose, min API 26). No server. UI text Japanese. Portrait-locked UI.
+- Android only (Kotlin, Jetpack Compose, min API 26). No server. UI text Japanese. Portrait-locked UI. App name (launcher label, `android:label`, `app_name`): `FamilyPhoto` [CONFIRMED by the user, Q54]; package stays `com.example.parentphoto`.
+- All UI strings (father-facing and administrator-facing, notification text, channel name, accessibility text) live in `res/values/strings.xml` (Japanese) [CONFIRMED by the user, Q58].
 - Time: all displayed and mailed times use Asia/Tokyo (`ZoneId.of("Asia/Tokyo")`), independent of device time zone. Capture time is stored as epoch millis (UTC) and formatted at use.
 - Constants:
   - `UNDO_SECONDS = 3`, `SENT_SCREEN_MS = 2000`, `QUEUED_NOTICE_MS = 2000`
   - `FG_SEND_TIMEOUT_MS = 60000`, SMTP connect 15000, read 30000, write 30000
   - `ACTIVE_CAP = 5`, `ATTENTION_CAP = 10`, `RECIPIENT_CAP = 6`
   - `RETRY_WINDOW_MS = 24 h`, `BACKOFF_INITIAL = 15 min` (exponential), `BATCH_MAX_BYTES = 15 MB` (sum of attachment file sizes; Base64 adds about 37 percent, keeping the mail under Gmail's 25 MB)
-  - `SEND_LOG_MAX = 50`, `LONG_PRESS_MS = 3000`, `RECIPIENT_NAME_MAX = 10`
+  - `SEND_LOG_MAX = 50`, `LONG_PRESS_MS = 3000`, `RECIPIENT_NAME_MAX = 10`, `CAPTURE_FAILURE_MESSAGE_MS = 3000`, `SENDER_NAME_MAX = 20`, `HOST_MAX = 253`, `EMAIL_MAX = 254`
 - Items marked [ASSUMPTION] are implementation choices beyond the confirmed spec.
 
 ## 2. Screen state machine
@@ -49,7 +51,7 @@ Single `MainViewModel` holds `UiState`; Compose renders one screen per state. Na
 ### 2.2 Precedence at launch and after returning from Settings
 0. Loading is shown until settings and outbox recovery are ready (prevents a SetupRequired flash). [ASSUMPTION]
 1. If SetupRequired condition holds -> SetupRequired (camera not started).
-2. Else if camera permission is not granted -> request the permission (system dialog) once per cold start, the first time the camera would be shown; if denied -> PermissionDenied. Returning from system app settings (resume) re-checks the permission without a new dialog. [ASSUMPTION: rule "once per cold start"] [ASSUMPTION: SetupRequired is checked before camera permission, since photos could not be sent anyway.]
+2. Else if camera permission is not granted -> request the permission (system dialog) once per cold start, the first time the camera would be shown; if denied -> PermissionDenied. Returning from system app settings (resume) re-checks the permission without a new dialog. Precedence is re-evaluated on every `onResume` (never requesting the permission again), so a permission revoked while the app is in the background leads to PermissionDenied [CONFIRMED by the user, Q58]. [ASSUMPTION: rule "once per cold start"] [ASSUMPTION: SetupRequired is checked before camera permission, since photos could not be sent anyway.]
 3. Else if active items = 5 -> OutboxFull; else Camera.
 - If a captured photo exists (state was Preview) when opening Settings, returning goes back to Preview with the same photo (photo kept in `cache/preview.jpg`; setup re-evaluated: if now SetupRequired, the photo is kept and Preview is shown again once setup is valid). Preview is never restored after process death or app restart: at every cold start `cache/preview.jpg` and `cache/capture_raw.jpg` are deleted. [CONFIRMED by the user, Q46]
 
@@ -60,7 +62,7 @@ Single `MainViewModel` holds `UiState`; Compose renders one screen per state. Na
 | PermissionDenied | tap "設定を開く" | system app settings | `ACTION_APPLICATION_DETAILS_SETTINGS`; on resume re-evaluate 2.2. |
 | Camera | tap shutter | Capturing | Record capture time, take photo. |
 | Capturing | photo and resize OK | Preview | `preview.jpg` ready (4.3). |
-| Capturing | capture/decode/resize error, OOM, camera init error | Camera (or OutboxFull) | Delete partial files; show the message "撮影できませんでした。もう一度お試しください" (36 sp, centered, about 3 s, then hides); log to Logcat (tag `ParentPhoto/Camera`). [CONFIRMED by the user, Q45] |
+| Capturing | capture/decode/resize error, OOM, camera init error | Camera (or OutboxFull) | Delete partial files; show the message "撮影できませんでした。もう一度お試しください" (36 sp, centered, in the dark box of 3.4; exactly 3000 ms = `CAPTURE_FAILURE_MESSAGE_MS`, then hides; a second failure while it is visible restarts the 3000 ms timer); log to Logcat (tag `ParentPhoto/Camera`). [CONFIRMED by the user, Q45] |
 | Camera | active count reaches 5 | OutboxFull | Observed via outbox Flow. |
 | OutboxFull | active count < 5 | Camera | Automatic. |
 | Preview | tap やり直す | Camera (or OutboxFull) | Delete cached photo file; no send. |
@@ -103,6 +105,8 @@ Single `MainViewModel` holds `UiState`; Compose renders one screen per state. Na
 | PermissionDenied guidance [ASSUMPTION wording] | カメラの使用を許可してください |
 | PermissionDenied button [ASSUMPTION wording] | 設定を開く |
 | Capture failure message | 撮影できませんでした。もう一度お試しください |
+| Snackbar after 保存 (settings) | 保存しました |
+| Snackbar, 今すぐ再送 when no slot is free | 順番待ちです。しばらくお待ちください |
 | Notification (requires attention) | 写真が送れていません。家族に連絡してください |
 | Notification (overflow deleted oldest) | 写真が送れていません。古い写真1枚を削除しました。家族に連絡してください |
 - The word "要確認" is administrator-facing only (hidden settings); never shown to the father.
@@ -110,14 +114,30 @@ Single `MainViewModel` holds `UiState`; Compose renders one screen per state. Na
 - Shutter content description: 撮影 (accessibility only). [ASSUMPTION]
 
 ### 3.2 Sizes
-- Father-facing text: buttons 28 sp, messages 36 sp, fixed (not affected by the button size setting; specified in `sp`).
+- Father-facing text: buttons 28 sp, messages 36 sp, fixed (not affected by the button size setting). All father-facing screens ignore the system font scale: wrap their content in `CompositionLocalProvider(LocalDensity provides Density(density, fontScale = 1f))` so 28/36/20 sp render as-is [CONFIRMED by the user, Q51]. The hidden settings screen follows the system font scale.
 - Button size levels (min height, full width): 標準 56 dp / 大 96 dp / 特大 128 dp, default 大. Applies to: やり直す, recipient buttons, 取り消す, 設定を開く (PermissionDenied). Does not apply to: the shutter button (standard, a 72 dp circular button [ASSUMPTION]), the settings icon, and the hidden settings screen.
 - Recipient list: vertically scrollable `LazyColumn` above the やり直す button, max 6 entries; やり直す is pinned at the bottom.
-- Badges: top-left corner of Camera/OutboxFull; "未送信 N件" neutral color, "送れていません M件" warning color (e.g., orange/red), text 20 sp [ASSUMPTION: smaller than message text].
+- Badges: see 3.4 (layout, colors, 20 sp final) [CONFIRMED by the user, Q55]. No abbreviation of counts (N <= 5, M <= 10).
 
 ### 3.3 Settings icon and long press
 - Small gear icon (24 dp visual, 48 dp touch target) in the top-right corner of Camera, OutboxFull, Preview, SetupRequired, PermissionDenied.
 - Tap does nothing visible. Long press of 3000 ms (finger held continuously; movement beyond touch slop cancels) opens Settings. Implement with `pointerInput` + `awaitLongPressOrCancellation`-like timer at 3 s. No PIN, no haptic hint required.
+
+### 3.4 Father-facing layout and colors [CONFIRMED by the user, Q52, Q55]
+Theme: Material3 default light color scheme (static, no dynamic color). Tokens used (hex): background `#FFFBFE`, onBackground `#1C1B1F`, primary `#6750A4`, onPrimary `#FFFFFF`, secondary `#625B71`, outline `#79747E`, primaryContainer `#EADDFF`, onPrimaryContainer `#21005D`, scrim `#000000`. Warning badge: `#E65100` with white text. Shapes: buttons rounded 12 dp; badges pill (fully rounded). No animation or transition between states (instant switch; the countdown number changes without animation).
+- General: all content is horizontally centered with 16 dp margins and 16 dp spacing between elements. Message text 36 sp, centered, onBackground color. Button text 28 sp, centered, maximum 2 lines.
+- Loading: full-screen `background`, nothing else, no timeout.
+- SetupRequired: `background`, "設定が必要です" centered vertically and horizontally (36 sp); settings icon top-right.
+- PermissionDenied: `background`, guidance text (36 sp) centered above, 設定を開く button (filled primary, father button size level, full width, 16 dp margins) below it; settings icon top-right.
+- Camera: full-screen live PreviewView. Shutter: 72 dp circle, bottom-center, 32 dp above the bottom edge, white fill with `#1C1B1F` 4 dp ring. Badges top-left (below the status bar inset, 16 dp margin): dark pill = `#000000` at 60 percent alpha, white 20 sp text, 12 dp horizontal and 6 dp vertical padding; "未送信 N件" above, "送れていません M件" below, 8 dp apart; the warning badge uses opaque background `#E65100` with white text. Settings icon top-right, white at 70 percent alpha. Failure message (2.3): centered box, `#000000` 60 percent alpha background, white 36 sp text, 16 dp padding, 16 dp rounded corners.
+- OutboxFull: same as Camera (camera feed stays live); the shutter is disabled (40 percent alpha, ignores taps); the guidance text (36 sp, white) sits bottom-center directly above the shutter (16 dp gap) in a `#000000` 60 percent alpha box with 16 dp padding.
+- Capturing: Camera layout with the shutter visible but disabled (40 percent alpha); a 32 dp white `CircularProgressIndicator` centered over the camera feed; badges as in Camera; no settings icon, no other buttons.
+- Preview: `background`. Photo area at the top with `ContentScale.Fit`, taking all remaining height but at least 30 percent of the screen height. Below it a `LazyColumn` of recipient buttons (filled primary, onPrimary text, full width, 16 dp spacing; its height is limited to the space left after the photo minimum, and it scrolls), then やり直す pinned at the bottom (outlined, `secondary` text and `outline` border, same size level, 16 dp margin). Settings icon top-right (`#49454F`) over the photo. Zero recipients: text "送り先が登録されていません" (36 sp, centered) in place of the list.
+- CancelWindow: Preview layout with the photo dimmed (scrim 50 percent over the photo); no recipient list and no やり直す; centered label `{n}秒後に送ります` (36 sp) below the photo; 取り消す pinned at the bottom (filled primary, father button size level, full width, 16 dp margin); no settings icon.
+- Sending: same dimmed-photo layout; centered "送信中..." (36 sp); no buttons, no settings icon.
+- Sent: full-screen `primaryContainer` background, centered "送りました！" (36 sp, `onPrimaryContainer`), no icon.
+- QueuedNotice: full-screen `background`, centered "あとで送ります" (36 sp, onBackground), no icon.
+- Disabled buttons use Material3 default disabled colors.
 
 ## 4. Camera and image processing
 
@@ -226,7 +246,7 @@ Single `MainViewModel` holds `UiState`; Compose renders one screen per state. Na
 ### 7.5 要確認 handling
 - Reasons: AUTH, PERMANENT, RETRY_EXPIRED, RECIPIENT_DELETED.
 - Resume triggers (-> 待機中/QUEUED, `retryStartMillis = now`, enqueue worker): saving SMTP settings (address, password, host, port) resumes all ATTENTION items with reason AUTH, PERMANENT, RETRY_EXPIRED; a successful test send does the same; 今すぐ再送 on a single item resumes it regardless of reason except RECIPIENT_DELETED (button disabled for that reason; the item can only be deleted). [ASSUMPTION: RECIPIENT_DELETED items are not resumable; re-adding a recipient does not restore the link.]
-- Active cap on resume: if the active count is 5, a manual 今すぐ再送 tap does NOT send immediately. The item stays 要確認 with `resendPending = true`, the UI shows the short notice "順番待ちです。しばらくお待ちください" (snackbar/toast in hidden settings), and the item is promoted automatically, oldest first (by `attentionSinceMillis`), when a slot is free (2.4). `OutboxRepository` observes the active-count Flow (and the Preview-reservation flag) and performs the promotion (sets phase QUEUED, resets `retryStartMillis`, enqueues the worker). [CONFIRMED by the user, Q47; observer location is an ASSUMPTION] Each manual 今すぐ再送 tap writes a `RESEND_REQUESTED` log entry. [ASSUMPTION: notice wording] The same applies to resumes triggered by settings save / test success.
+- Active cap on resume: if the active count is 5, a manual 今すぐ再送 tap does NOT send immediately. The item stays 要確認 with `resendPending = true`, the UI shows the notice "順番待ちです。しばらくお待ちください" as a Material3 `Snackbar` (`SnackbarDuration.Short`, no action button) in the hidden settings [CONFIRMED by the user, Q57]. No other feedback is shown when a resend starts (the row simply becomes 待機中), and the item is promoted automatically, oldest first (by `attentionSinceMillis`), when a slot is free (2.4). `OutboxRepository` observes the active-count Flow (and the Preview-reservation flag) and performs the promotion (sets phase QUEUED, resets `retryStartMillis`, enqueues the worker). [CONFIRMED by the user, Q47; observer location is an ASSUMPTION] Each manual 今すぐ再送 tap writes a `RESEND_REQUESTED` log entry. [ASSUMPTION: notice wording] The same applies to resumes triggered by settings save / test success.
 - Recipient edited: the new address is used at the next send (read by id). Recipient deleted: every WAITING/QUEUED item of that recipient moves to 要確認 (reason RECIPIENT_DELETED) immediately in the same transaction as the deletion; items in CANCEL_WINDOW/SENDING_FG of that recipient finish normally (attempt uses the address read at attempt start).
 
 ### 7.6 Startup recovery
@@ -266,53 +286,66 @@ Single `MainViewModel` holds `UiState`; Compose renders one screen per state. Na
 ## 9. Hidden settings screen
 Standard Material sizes (not the father-facing button sizes). A scrollable single screen with a top app bar titled "設定" and a back arrow.
 
+Settings sub-screens (未送信一覧, 送信ログ) are separate routes with an app bar (title = section name, back arrow); back from them returns to the settings screen, which keeps its form state including unsaved edits. Dialogs are modal: the recipient add/edit dialog is dismissed by outside tap or back without saving and without confirmation; confirm dialogs dismiss as "キャンセル"; the progress dialog cannot be dismissed; the result dialog only by "OK" [CONFIRMED by the user, Q58].
+
 ### 9.1 Sections and labels [ASSUMPTION: labels]
-1. 送り先 (recipients): header "送り先 n/6"; list of rows in registration order (display name, email) with edit and delete icons; "追加" button (disabled at 6 recipients). Add/edit dialog: fields "表示名" and "メールアドレス", buttons "保存"/"キャンセル". Delete shows a confirm dialog: with no queued photos for that recipient "この宛先を削除しますか？"; with N queued photos (WAITING or ATTENTION) "この宛先を削除しますか？ 送れていない写真が{N}枚あります。削除すると、その写真は送られなくなります（未送信一覧に残ります）。" Buttons "削除"/"キャンセル". [ASSUMPTION: wording] Saved immediately to DataStore.
+1. 送り先 (recipients): header "送り先 n/6"; list of rows in registration order (display name, email) with edit and delete icons; "追加" button (disabled at 6 recipients). Add/edit dialog: fields "表示名" and "メールアドレス", buttons "保存"/"キャンセル". Dialog titles: "送り先を追加" / "送り先を編集". "追加" button sits below the list. Edit/delete icon buttons have content descriptions "編集" / "削除". The email shows on one line below the name (ellipsis if long). Delete shows a confirm dialog: with no queued photos for that recipient "この宛先を削除しますか？"; with N queued photos (WAITING or ATTENTION) "この宛先を削除しますか？ 送れていない写真が{N}枚あります。削除すると、その写真は送られなくなります（未送信一覧に残ります）。" Buttons "削除"/"キャンセル". [ASSUMPTION: wording] Saved immediately to DataStore.
 2. 送信者名: field "送信者名（例: お父さん）".
-3. メール設定 (SMTP) [dirty handling: pressing back (or the app bar arrow) with unsaved changes in 送信者名/SMTP fields shows the confirm dialog "保存していない変更があります。破棄しますか？" with buttons "破棄" (leave, changes discarded) and "戻る" (stay). [ASSUMPTION]]: "送信元メールアドレス", "アプリパスワード", "SMTPホスト", "SMTPポート"; one "保存" button for sections 2-3 (button enabled when the form is dirty and valid).
+3. メール設定 (SMTP) [dirty handling: pressing back (or the app bar arrow) with unsaved changes in 送信者名/SMTP fields shows the confirm dialog "保存していない変更があります。破棄しますか？" with buttons "破棄" (leave, changes discarded) and "戻る" (stay). [ASSUMPTION]]: "送信元メールアドレス", "アプリパスワード", "SMTPホスト", "SMTPポート"; one "保存" button for sections 2-3. The button is enabled whenever the form is dirty (regardless of validity); pressing it validates (9.3), shows errors under the fields, scrolls to and focuses the first field with an error, and saves nothing if any error exists. On success it saves and shows the Snackbar "保存しました" [CONFIRMED by the user, Q53, Q57]. The recipient add/edit dialog follows the same rule: "保存" is always enabled, validates on press, errors under the fields, the dialog stays open on error.
 4. ボタンの大きさ: radio group 標準 / 大 / 特大; saved immediately.
 5. テスト送信 (9.5).
 6. 未送信一覧 (opens 9.6), 送信ログ (opens 9.7).
 
 ### 9.2 App password field
 - Not saved yet: empty masked field with a show/hide toggle; paste allowed; all whitespace (spaces, newlines) removed from the input on change.
-- Already saved: field shows `●●●●●●●●●●●●●●●●` (disabled) and a "変更" button; tapping 変更 clears the field to an empty editable masked field. The saved value is never revealed. Leaving the field untouched keeps the saved password.
+- Already saved: field shows `●●●●●●●●●●●●●●●●` (disabled) and a "変更" button; tapping 変更 clears the field to an empty editable masked field with a "キャンセル" text button beside it that restores the saved-password state. After 変更, an empty field is invalid on 保存 ("16文字で入力してください") and the form counts as dirty. The saved value is never revealed. Not tapping 変更 keeps the saved password. Autofill is disabled on this field (`importantForAutofill = no`) [CONFIRMED by the user, Q58].
 
 ### 9.3 Validation (on 保存; show error text under the field; do not save if any error)
 - Recipient: display name non-empty after trim ("表示名を入力してください") and at most 10 characters ("10文字以内で入力してください"); email trimmed before validation; email must match a standard email pattern (`android.util.Patterns.EMAIL_ADDRESS`) ("メールアドレスの形式が正しくありません"); no duplicate check; max 6.
-- 送信元メールアドレス: valid email format.
+- 送信元メールアドレス: valid email format ("メールアドレスの形式が正しくありません").
 - アプリパスワード: after removing whitespace, exactly 16 characters ("16文字で入力してください"). Required when no password is saved.
-- SMTPホスト: non-empty after trim.
-- SMTPポート: integer 1-65535.
+- SMTPホスト: non-empty after trim ("SMTPホストを入力してください"); no whitespace inside ("SMTPホストの形式が正しくありません"); at most 253 characters.
+- SMTPポート: integer 1-65535 ("1〜65535の数字を入力してください").
+- Maximum lengths: 送信者名 20 characters (further input blocked), email addresses 254.
 - 送信者名: no validation (may be empty); trimmed; CR/LF removed on save.
 
 ### 9.4 After saving SMTP fields
 - Persist, then run resume (7.5) for ATTENTION items with reasons AUTH, PERMANENT, RETRY_EXPIRED.
 
 ### 9.5 Test send
-- Section: recipient dropdown (selection is transient UI state held in the ViewModel / `rememberSaveable`, NOT persisted in DataStore) [ASSUMPTION] (from the recipient list; button disabled with hint "送り先を登録してください" when empty) and button "テスト送信". Disabled while the SMTP form is dirty (hint "先に保存してください").
+- Section: recipient dropdown (selection is transient UI state held in the ViewModel / `rememberSaveable`, NOT persisted in DataStore) [ASSUMPTION] (from the recipient list; the first recipient is preselected; if the selected recipient is deleted meanwhile, the first remaining one is selected) and button "テスト送信". The hint is a 12 sp gray (`#49454F`) line below the button. Disabled states and hint priority: (1) no recipients: "送り先を登録してください"; (2) otherwise saved SMTP settings invalid/unset (8.3): "先にメール設定を保存してください"; (3) otherwise SMTP form dirty: "先に保存してください" [CONFIRMED by the user, Q58].
 - Sends the text-only test mail (5) using saved settings, `Dispatchers.IO`, same timeouts, 60 s cap; shows a modal progress dialog "送信中..." (no cancel; back ignored; test button disabled meanwhile) [ASSUMPTION], then a result dialog with an "OK" button:
   - Success: "送信できました" (log TEST_OK; triggers resume per 7.5).
   - AUTH: "ログインできませんでした。送信元アドレスとアプリパスワードを確認してください"
   - NETWORK/TIMEOUT: "ネットワークに接続できませんでした"
   - REJECTED: "宛先アドレスが受け付けられませんでした"
-  - Other: "送信に失敗しました（{code}）"
+  - Other: "送信に失敗しました（{code}）" where `{code}` is the log code string (OTHER).
+  - The result dialog is dismissed only by "OK"; no extra text is shown when resume was triggered.
   - Logged as TEST_FAILED with the code.
 
 ### 9.6 Unsent list (未送信一覧)
-- Two groups: "送信待ち" (WAITING items) and "要確認" (ATTENTION items, max 10). Row: thumbnail (decoded from the outbox file, about 96 dp), recipient name (or "（削除された宛先）"), capture time `yyyy/MM/dd HH:mm`, state label (待機中 / 要確認) and, for 要確認, the reason in Japanese: AUTH "ログイン失敗", PERMANENT "送信拒否", RETRY_EXPIRED "24時間再試行しても送れませんでした", RECIPIENT_DELETED "宛先が削除されました". [ASSUMPTION: reason labels]
-- Buttons per row: "今すぐ再送" (enabled per 7.5; for 待機中 items it triggers an immediate worker run and restarts the 24 h window) and "削除" (confirm dialog "削除しますか？").
+- Two groups in this order: "送信待ち n件" (WAITING items; oldest capture time first) and "要確認 n件/10" (ATTENTION items; ascending `attentionSinceMillis`, matching the promotion order). An empty group's header is hidden. Row layout: thumbnail (96 dp square, `ContentScale.Crop`) on the left; texts to its right; the two buttons in a row beneath the texts. Row contents: thumbnail (decoded from the outbox file, 96 dp), recipient name (or "（削除された宛先）"), capture time `yyyy/MM/dd HH:mm`, state label (待機中 / 要確認) and, for 要確認, the reason in Japanese: AUTH "ログイン失敗", PERMANENT "送信拒否", RETRY_EXPIRED "24時間再試行しても送れませんでした", RECIPIENT_DELETED "宛先が削除されました". [ASSUMPTION: reason labels]
+- Buttons per row: "今すぐ再送" (enabled per 7.5; for 待機中 items it triggers an immediate worker run and restarts the 24 h window) and "削除" (confirm dialog "削除しますか？" with buttons "削除" / "キャンセル").
 - Items in CANCEL_WINDOW, SENDING_FG, or SENDING_BG are shown as 待機中 with both buttons disabled.
-- Thumbnails: decoded asynchronously at about 96 dp; while loading a gray placeholder box; if the file is missing or undecodable a placeholder with the text "画像なし" (the row stays, only 削除 is enabled). The list updates live from the Room Flow. [ASSUMPTION]
-- Empty text: "未送信の写真はありません".
+- Thumbnails: decoded asynchronously at 96 dp; while loading a gray placeholder box; if the file is missing or undecodable a placeholder with the text "画像なし" (the row stays, only 削除 is enabled). The list updates live from the Room Flow. [ASSUMPTION]
+- Empty text: "未送信の写真はありません" (shown only when both groups are empty). The group name "送信待ち" and the state label "待機中" are both kept [CONFIRMED by the user, Q58].
 
 ### 9.7 Send log
-- Newest first, up to 50 rows: time `yyyy/MM/dd HH:mm:ss`, recipient name, result text (送信成功 / 失敗 / オフラインのため保留 / 削除 / 削除（上限超過） / 再送要求 / テスト成功 / テスト失敗), short code. No images. Empty state text: "送信ログはありません". No clear-log button. [ASSUMPTION] "再送要求" entries come from 今すぐ再送 taps (7.5).
+- Newest first, up to 50 rows: time `yyyy/MM/dd HH:mm:ss`, recipient name, result text (送信成功 / 失敗 / オフラインのため保留 / 削除 / 削除（上限超過） / 再送要求 / テスト成功 / テスト失敗), short code (shown for FAILED and TEST_FAILED; blank otherwise). Row: first line time and recipient name, second line result text and code. Mapping: SENT=送信成功, FAILED=失敗, QUEUED_OFFLINE=オフラインのため保留, DELETED_MANUAL=削除, DELETED_OVERFLOW=削除（上限超過）, RESEND_REQUESTED=再送要求, TEST_OK=テスト成功, TEST_FAILED=テスト失敗. A batch mail of N photos writes one entry. Test entries show the chosen recipient name. No images. Empty state text: "送信ログはありません". No clear-log button. [ASSUMPTION] "再送要求" entries come from 今すぐ再送 taps (7.5).
+
+### 9.8 Settings form details [CONFIRMED by the user, Q58]
+- Fields are single-line. Keyboards: email fields use the email keyboard, port the number keyboard, host and sender name the text keyboard, password the password keyboard. IME action: Next between fields, Done on the last.
+- Default host `smtp.gmail.com` and port `465` are real prefilled text, not hints.
+- The dirty-form back dialog also applies to system back.
+- The long press gives no visual feedback (decided).
+
+### 9.9 Accessibility text
+Content descriptions (Japanese, in strings.xml): shutter "撮影", settings icon "設定", recipient edit "編集", recipient delete "削除", password toggle "パスワードを表示" / "パスワードを隠す", progress indicators "処理中". Badges are readable text.
 
 ## 10. Notifications, haptics, sound
 
 ### 10.1 Notification
-- Channel id `attention`, name "送信できていない写真", importance DEFAULT, created in `Application.onCreate` (idempotent). Single notification id 1001 (replaced, not stacked). Small icon: drawable resource `ic_stat_photo` (monochrome vector). [ASSUMPTION]
+- Channel id `attention`, name "送信できていない写真", importance DEFAULT, created in `Application.onCreate` (idempotent). Single notification id 1001 (replaced, not stacked). Style: no title, `BigTextStyle` with the message as body, `setOnlyAlertOnce(true)`, `setAutoCancel(false)`; the text always reflects the latest event [CONFIRMED by the user, Q56]. Small icon: drawable resource `ic_stat_photo` (monochrome vector). [ASSUMPTION]
 - Tap: `PendingIntent.getActivity` (FLAG_IMMUTABLE | FLAG_UPDATE_CURRENT) to `MainActivity` with `FLAG_ACTIVITY_REORDER_TO_FRONT | FLAG_ACTIVITY_SINGLE_TOP`: brings the existing task to the front without changing the current screen (no deep link; the family still uses the 3 s long press to reach settings). [ASSUMPTION]
 - Dismissal: the notification is cancelled (`cancel(1001)`) when the 要確認 count becomes 0 (observed by `OutboxRepository`). [ASSUMPTION]
 - Fires when an item becomes 要確認 (any reason: auth, permanent, retry expired, recipient deleted). Text: "写真が送れていません。家族に連絡してください". If that transition caused an overflow deletion (7.8): "写真が送れていません。古い写真1枚を削除しました。家族に連絡してください". No technical detail.
@@ -320,7 +353,7 @@ Standard Material sizes (not the father-facing button sizes). A scrollable singl
 - No notification for success, queued notice, or successful later delivery.
 
 ### 10.2 Success feedback
-- On entering Sent: vibration one-shot 300 ms (`VibrationEffect.createOneShot`, DEFAULT_AMPLITUDE) and a short sound (`ToneGenerator(STREAM_NOTIFICATION, 80)` `TONE_PROP_ACK`, about 200 ms) together. [CONFIRMED by the user: durations and tone] In silent/vibrate ringer mode (`AudioManager.ringerMode != RINGER_MODE_NORMAL`) only the vibration is performed; the sound is not forced. [CONFIRMED by the user, Q49]
+- On entering Sent: vibration one-shot 300 ms (`VibrationEffect.createOneShot`, DEFAULT_AMPLITUDE) and a short sound (`ToneGenerator(STREAM_NOTIFICATION, 80)` `startTone(TONE_PROP_ACK, 200)`, generator released after 300 ms) together. [CONFIRMED by the user: durations and tone] In silent/vibrate ringer mode (`AudioManager.ringerMode != RINGER_MODE_NORMAL`) only the vibration is performed; the sound is not forced. [CONFIRMED by the user, Q49]
 - Queued notice and later (worker) deliveries: silent, no vibration.
 - Screen-keep-on is NOT adopted.
 
@@ -339,7 +372,7 @@ Standard Material sizes (not the father-facing button sizes). A scrollable singl
 ### 11.2 Manifest
 - Permissions: `INTERNET`, `CAMERA`, `POST_NOTIFICATIONS`, `VIBRATE`, `ACCESS_NETWORK_STATE` [ASSUMPTION: needed for the offline shortcut check].
 - `<uses-feature android:name="android.hardware.camera" android:required="true"/>`.
-- Activity: `screenOrientation="portrait"`, `exported=true` (launcher), `windowSoftInputMode="adjustResize"`.
+- Application and activity `android:label` = `@string/app_name` = FamilyPhoto. Activity: `screenOrientation="portrait"`, `exported=true` (launcher), `windowSoftInputMode="adjustResize"`.
 - `android:allowBackup="false"`; `minSdk 26`.
 
 ### 11.3 Dependencies
@@ -351,7 +384,7 @@ Standard Material sizes (not the father-facing button sizes). A scrollable singl
 - Also exclude the duplicate license files: `packaging { resources { excludes += setOf("META-INF/LICENSE.md", "META-INF/NOTICE.md") } }` (android-mail and android-activation both ship them; the build fails otherwise). [VERIFIED by spike, `docs/plans/smtp-send-spike/RESULT.md`]
 - The keep rules above are REQUIRED: without them `msg.writeTo` fails with `no object DCH for MIME type multipart/mixed` in the R8 release build. The verified rule set is `spike/app/proguard-rules.pro`. [VERIFIED by spike]
 - Verify with a real release build: send a photo mail from a release APK on API 26+ before closing the feature.
-- Release artifact name includes date-time (e.g., `ParentPhoto_YYYYMMDD-HHMMSS.apk`) per global convention.
+- Release artifact name includes date-time (e.g., `FamilyPhoto_YYYYMMDD-HHMMSS.apk`) per global convention.
 
 ## 12. Acceptance checklist (numbering follows spec.md sections; "2-1" = spec section 2, item 1)
 - [x] FIRST TASK: spike (6.0) passed on API 26-level and Android 14/15 with an R8 release build (multipart mail with JPEG attachment received).
@@ -369,5 +402,6 @@ Standard Material sizes (not the father-facing button sizes). A scrollable singl
 - [ ] 5 Outbox: failure queues the photo; WorkManager network constraint, 15 min exponential backoff, stops after 24 h -> 要確認 (photo kept); auth/permanent -> 要確認 immediately; batching per recipient with 15 MB split; settings read at send time; recipient edit uses new address, delete -> 要確認; 要確認 cap 10 with oldest deleted on overflow and logged; resume on settings save / test success / 今すぐ再送 (waits if no slot; promoted oldest-first by OutboxRepository; manual tap writes RESEND_REQUESTED and restarts the 24 h window); duplicates tolerated; startup recovery sends killed-in-flight items.
 - [ ] 5 Notification: channel created at app start; shown only on becoming 要確認; overflow wording when the oldest photo was removed; tap brings the existing task to front; cancelled when 要確認 count is 0; permission requested once on API 33+.
 - [ ] 6 Worker safety: triggers never cancel a RUNNING worker; items set to SENDING_BG before send; cancellation leaves items QUEUED; back handlers ignore back in Preview/CancelWindow/Sending/Sent/QueuedNotice (Capturing and Loading also).
-- [ ] 7 Unresolved: none; all Q1-Q50 reflected.
+- [ ] UI audit (Q51-Q58): father screens ignore system font scale; layouts and colors per 3.4; 保存 enabled when dirty and validates on press; Snackbars only for 保存しました and 順番待ち; notification BigText, onlyAlertOnce, not auto-cancelled; app name FamilyPhoto.
+- [ ] 7 Unresolved: none; all Q1-Q58 reflected.
 - [ ] Release: R8 build sends mail correctly; manifest has INTERNET, CAMERA, POST_NOTIFICATIONS, VIBRATE, ACCESS_NETWORK_STATE.
