@@ -20,7 +20,7 @@ Source of truth: `docs/spec.md`, `docs/detailed-spec.md` (ds), `docs/QA.md`. Sec
 | 2 | app-foundation | `app-foundation/` | Gradle, manifest, deps, R8/packaging, Application, constants, time helper | `feature/app-foundation` | done (merged) |
 | 3 | settings-storage | `settings-storage/` | DataStore, Keystore password crypto, recipients, SetupRequired (ds 8) | `feature/settings-storage` | done (merged) |
 | 4 | camera-capture | `camera-capture/` | CameraX, capture, resize, permission (ds 4) | `feature/camera-capture` | done (merged) |
-| 5 | mail-composition-smtp | `mail-composition-smtp/` (1 plan) | MIME composition, session, offline shortcut, error classification, Logcat/send-log recording (ds 5, 6.1-6.4) | `feature/mail-composition-smtp` | planned |
+| 5 | mail-composition-smtp | `mail-composition-smtp/` (1 plan) | MIME composition, session, offline shortcut, error classification, Logcat/send-log recording (ds 5, 6.1-6.4) | `feature/mail-composition-smtp` | done (merged; real-send smoke deferred to acceptance-verification) |
 | 6 | outbox-queue | `outbox-queue/` (3 sub-plans) | Room, counting, creation, batching, overflow, recovery, resume/promotion (ds 7.1-7.3, 7.5-7.8, 2.4) | `feature/outbox-queue` | planned |
 | 7 | outbox-worker | `outbox-worker/` (2 sub-plans) | WorkManager run, KEEP/REPLACE scheduling, backoff, 24 h expiry, resume triggers (ds 7.4, 7.5) | `feature/outbox-worker` | planned |
 | 8 | photo-send-flow | `photo-send-flow/` (3 sub-plans) | MainViewModel state machine, father-facing UI, undo window, foreground send, feedback (ds 2, 3, 10.2) | `feature/photo-send-flow` | planned (real wiring after 5-6) |

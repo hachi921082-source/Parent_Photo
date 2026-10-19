@@ -410,3 +410,6 @@ Background: a self-review found places where the implementer would have had to c
 
 ### Q62. onResume precedence re-evaluation scope [RESOLVED]
 - Answer: replaces only SetupRequired, PermissionDenied, Camera, OutboxFull; Capturing, Preview, CancelWindow, Sending, Sent, QueuedNotice are never interrupted (a revoked permission mid-Preview does not discard the photo). CONFIRMED by the user.
+
+### Q63. sendForeground check order: missing recipient vs offline [RESOLVED]
+- Answer: recipient check first. A deleted recipient returns RecipientMissing (straight to 要確認) even when offline; no queueing. CONFIRMED by the user.
