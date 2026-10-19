@@ -32,8 +32,13 @@ class OutboxScheduler(
 ) : WorkScheduler {
 
     override fun enqueueDefault() {
-        wm.enqueueUniqueWork(Constants.WORK_OUTBOX_SEND, ExistingWorkPolicy.KEEP, request())
-        WorkerLog.i("enqueueDefault")
+        try {
+            wm.enqueueUniqueWork(Constants.WORK_OUTBOX_SEND, ExistingWorkPolicy.KEEP, request())
+            WorkerLog.i("enqueueDefault")
+        } catch (e: Exception) {
+            // 呼び出し側(未送信キューの書き込み直後)を失敗させない。次のきっかけ(起動時の復旧など)で登録し直される
+            WorkerLog.i("enqueueDefault failed: ${e.javaClass.simpleName}")
+        }
     }
 
     override fun triggerNow() {
