@@ -62,7 +62,7 @@ class SmtpSenderTest {
     @Test
     fun foregroundSuccess() = runBlocking {
         var sent: MimeMessage? = null
-        val r = sender(FakeSettings(base), transport = { sent = it }).sendForeground(1)
+        val r = sender(FakeSettings(base), transport = { sent = it }).sendForeground("item1")
         assertEquals(MailResult.Success, r)
         assertEquals("写真が届きました", sent!!.subject)
         assertEquals(listOf<Any>("smtp.gmail.com", 465, "f@gmail.com", "pw"), sessions[0])
@@ -71,7 +71,7 @@ class SmtpSenderTest {
 
     @Test
     fun offlineShortcutSkipsSessionAndCompose() = runBlocking {
-        val r = sender(FakeSettings(base), offline = true).sendForeground(1)
+        val r = sender(FakeSettings(base), offline = true).sendForeground("item1")
         assertEquals(MailResult.Offline, r)
         assertTrue(sessions.isEmpty())
     }
@@ -80,14 +80,14 @@ class SmtpSenderTest {
     fun recipientMissing() = runBlocking {
         assertEquals(
             MailResult.RecipientMissing,
-            sender(FakeSettings(base.copy(recipients = emptyList()))).sendForeground(1),
+            sender(FakeSettings(base.copy(recipients = emptyList()))).sendForeground("item1"),
         )
-        assertEquals(MailResult.RecipientMissing, sender(FakeSettings(base), src = source(null)).sendForeground(1))
+        assertEquals(MailResult.RecipientMissing, sender(FakeSettings(base), src = source(null)).sendForeground("item1"))
     }
 
     @Test
     fun missingPasswordIsAuthFailureWithoutConnecting() = runBlocking {
-        val r = sender(FakeSettings(base, password = null)).sendForeground(1) as MailResult.Failure
+        val r = sender(FakeSettings(base, password = null)).sendForeground("item1") as MailResult.Failure
         assertEquals(FailureKind.AUTH, r.kind)
         assertTrue(sessions.isEmpty())
     }
@@ -95,7 +95,7 @@ class SmtpSenderTest {
     @Test
     fun transportFailureIsClassified() = runBlocking {
         val r = sender(FakeSettings(base), transport = { throw java.net.UnknownHostException("h") })
-            .sendForeground(1) as MailResult.Failure
+            .sendForeground("item1") as MailResult.Failure
         assertEquals(MailCode.NETWORK, r.code)
     }
 
@@ -103,7 +103,7 @@ class SmtpSenderTest {
     fun missingPhotoFileIsClassifiedNotThrown() = runBlocking {
         val gone = SendableItem("r1", File("/nonexistent/x.jpg"), 0L)
         val r = sender(FakeSettings(base), src = source(gone), transport = { it.writeTo(java.io.OutputStream.nullOutputStream()) })
-            .sendForeground(1)
+            .sendForeground("item1")
         assertTrue(r is MailResult.Failure)
     }
 
@@ -135,9 +135,9 @@ class SmtpSenderTest {
     fun settingsReadEveryCall() = runBlocking {
         val fs = FakeSettings(base)
         val s = sender(fs)
-        s.sendForeground(1)
+        s.sendForeground("item1")
         fs.flow.value = base.copy(smtpHost = "other.example.com", smtpPort = 587)
-        s.sendForeground(1)
+        s.sendForeground("item1")
         assertEquals("smtp.gmail.com", sessions[0][0])
         assertEquals("other.example.com", sessions[1][0])
         assertEquals(587, sessions[1][1])
