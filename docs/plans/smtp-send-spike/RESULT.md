@@ -1,6 +1,6 @@
 # smtp-send-spike RESULT
 
-Status: send OK from R8 release on both devices; inbox check by user pending. One intermittent M06 failure noted.
+Status: PASS. API 26 emulator + M06 (API 36); Gmail smtp.gmail.com:465 SSL; R8 release (minified). sense4 (API 29) not tested.
 
 ## Index
 1. Environment
@@ -25,7 +25,15 @@ Status: send OK from R8 release on both devices; inbox check by user pending. On
 - Packaging: duplicate `META-INF/LICENSE.md` between android-mail and android-activation fails `mergeDebugJavaResource`. Fix: `packaging { resources { excludes += setOf("META-INF/LICENSE.md", "META-INF/NOTICE.md") } }` (ds 11.4 lists only mailcap `pickFirsts`; LICENSE.md is an addition, ds 11.4 should be updated).
 - R8: the keep rules from ds 11.4 are required (without them multipart/mixed DCH is missing). Full set in `spike/app/proguard-rules.pro`.
 
-## 4. Pending / observations
-- Intermittent on M06: `javax.mail.MessagingException: Exception reading response` (no class-loading error; server dropped the connection during/after DATA, likely Gmail throttling of rapid repeated sends or the 2-attachment size). Not seen on emulator. Whether those mails were delivered is to be checked in the inbox.
-- Duplicates in inbox are expected (several test sends).
-- User inbox check: subjects `[SPIKE] 写真テスト <yyyyMMdd_HHmmss> (release API26|API36 添付1|2)`; JPEGs open, same-name attachments handled.
+## 4. Inbox verification (user, 2026-10-19)
+All mails arrived; JPEGs open; both same-name attachments present in 2-attachment mails.
+- API 26: 193618 (1 att), 193623 (2 att), 193716 (2 att)
+- API 36: 193633 (1 att), 193642 (2 att), 193654 (2 att)
+
+## 5. False-failure observation (accepted risk)
+M06 reported `MessagingException: Exception reading response` in 2 runs (193642 and 193716-era run at 19:37) but mails 193642 and 193654 were delivered: the server likely dropped the connection after accepting DATA. A failure result can therefore be a false failure; retrying may produce duplicate mails. User decision: retry and accept possible duplicates (to be recorded in DECISIONS.md).
+
+## 6. Required spec changes (for main Claude)
+- ds 11.4: add packaging excludes `META-INF/LICENSE.md` and `META-INF/NOTICE.md` (duplicate between android-mail and android-activation fails the build).
+- ds 11.4: reference the verified keep rules file `spike/app/proguard-rules.pro` (keep rules are mandatory; without them `no object DCH for MIME type multipart/mixed`).
+- ds 6.3/7: note possible false failure on "Exception reading response" and accepted duplicates.
