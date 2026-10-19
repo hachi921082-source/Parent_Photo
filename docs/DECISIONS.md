@@ -77,3 +77,9 @@
 - Q47: the cap of 5 is strict (no 6th item) so the "shutter blocked at 5" rule is simple; the cost is that 今すぐ再送 may wait until a slot frees. A photo in Preview reserves a slot (designer's detail) so a promotion cannot make the photo's own send exceed the cap.
 - Q46: Preview is never restored after a restart; the photo has not been sent or queued, so discarding it is safer than showing a stale photo to the father.
 - Q49: sound is not forced in silent mode out of respect for the phone's setting; the vibration still confirms success.
+
+## D14. Possible duplicate delivery on read failure (2026-10-19)
+- Spike finding: on M06 (API 36), 2 of 3 sends ended with `Exception reading response`; one mail still arrived. The server can accept the mail and drop the connection before the reply, so the app cannot tell delivered from not delivered.
+- Decision (user): treat it as a retryable network error (6.3) and accept that a retry may deliver the same photo twice.
+- Reason: a duplicate is less harmful than a photo that never arrives; deduplication (fixed Message-ID) is not guaranteed on the receiving side.
+- Trade-off: the family may occasionally receive the same photo twice.
