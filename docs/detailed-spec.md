@@ -250,7 +250,7 @@ Theme: Material3 default light color scheme (static, no dynamic color). Tokens u
 - Recipient edited: the new address is used at the next send (read by id). Recipient deleted: every WAITING/QUEUED item of that recipient moves to 要確認 (reason RECIPIENT_DELETED) immediately in the same transaction as the deletion; items in CANCEL_WINDOW/SENDING_FG of that recipient finish normally (attempt uses the address read at attempt start).
 
 ### 7.6 Startup recovery
-- On process start: rows with phase CANCEL_WINDOW, SENDING_FG, or SENDING_BG (left by a kill) -> phase QUEUED so the photo is sent by the worker; orphan files without a row are deleted; rows without a file are deleted; enqueue the worker if any QUEUED exists. [CONFIRMED: a kill during the undo window sends the photo rather than discarding it.]
+- On process start: rows with phase CANCEL_WINDOW, SENDING_FG, or SENDING_BG (left by a kill) -> phase QUEUED so the photo is sent by the worker; orphan files without a row are deleted; rows without a file are deleted; if any QUEUED exists, call `triggerNow` (7.4: REPLACE if not RUNNING, else follow-up work), so every app start resets the backoff (Q64). [CONFIRMED: a kill during the undo window sends the photo rather than discarding it.]
 
 ### 7.7 Duplicates
 - Ambiguous failures (e.g., timeout after DATA) are retried anyway; no dedupe; each mail attempt gets a new Message-ID (default JavaMail behavior).
