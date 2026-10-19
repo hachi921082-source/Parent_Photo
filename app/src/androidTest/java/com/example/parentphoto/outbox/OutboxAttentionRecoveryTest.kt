@@ -42,11 +42,16 @@ class OutboxAttentionRecoveryTest {
 
     private class FakeScheduler(val fail: Boolean = false) : WorkScheduler {
         @Volatile var enqueued = 0
+        @Volatile var triggered = 0
         override fun enqueueDefault() {
             if (fail) throw IllegalStateException("boom")
             enqueued++
         }
-        override fun triggerNow() {}
+        // 起動時の復旧はこちらを呼ぶ(Q64)
+        override fun triggerNow() {
+            if (fail) throw IllegalStateException("boom")
+            triggered++
+        }
     }
 
     private class FakeAlerter : AttentionAlerter {
@@ -209,13 +214,28 @@ class OutboxAttentionRecoveryTest {
         assertEquals(ItemState.ATTENTION, row("att")!!.state)
         assertNull(row("nofile"))
         assertEquals(setOf("cw.jpg", "fg.jpg", "bg.jpg", "att.jpg"), files.listFiles().map { it.name }.toSet())
-        assertEquals(1, scheduler.enqueued)
+        assertEquals(1, scheduler.triggered)
+        assertEquals(0, scheduler.enqueued)
     }
 
     @Test
-    fun recoveryDoesNotEnqueueWithoutQueuedRows() = runBlocking {
+    fun recoveryWithQueuedRowUsesTriggerNowNotEnqueueDefault() = runBlocking {
+        // 裏送信中に落ちた行も、もともと送信待ちの行も、起動のたびにすぐ再送する(バックオフをリセット、Q64)
+        seed("bg", phase = Phase.SENDING_BG)
+        repo.recover()
+        assertEquals(1, scheduler.triggered)
+        assertEquals(0, scheduler.enqueued)
+        seed("q")
+        repo.recover()
+        assertEquals(2, scheduler.triggered)
+        assertEquals(0, scheduler.enqueued)
+    }
+
+    @Test
+    fun recoveryDoesNotScheduleWithoutQueuedRows() = runBlocking {
         seed("att", state = ItemState.ATTENTION, since = 1)
         repo.recover()
+        assertEquals(0, scheduler.triggered)
         assertEquals(0, scheduler.enqueued)
         // 置き場が無くても落ちない
         files.dir.deleteRecursively()
