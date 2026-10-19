@@ -33,7 +33,8 @@ Resume point for a fresh conversation. Updated 2026-10-18.
 
 ## 4. Open Items
 - Accepted risks: credentials on the father's phone (D10), no expiry for 要確認 until overflow (D12).
-- Unconfirmed `[ASSUMPTION]` tags remain in `docs/detailed-spec.md` (for example: preview reserves one active slot, 3 s capture-failure message, background behavior of the undo window, package name `com.example.parentphoto`, 300 ms vibration). Review them or let developer-lite flag conflicts.
+- Remaining `[ASSUMPTION]` tags in `docs/detailed-spec.md` are accepted as written (Q8 batch decision); a conflict found during implementation = new question to the user, never decided by the agent.
+- Spike gaps: API 29 (sense4) not tested; M06 had 2 of 3 "Exception reading response" on 2-attachment sends (accepted, D14).
 - Not adopted ideas (can be reopened): QR-code settings import, screen-keep-on, send-to-everyone, pre-send confirmation dialog.
 
 ## 5. Next Step
@@ -44,6 +45,9 @@ Resume point for a fresh conversation. Updated 2026-10-18.
 
 ## 6. Working Notes
 - The user prefers questions as selectable options (up to 4 at a time) with a recommendation; recommended option listed first.
+- The user does not want agents to decide user-facing matters: subagents return questions; the main Claude asks via AskUserQuestion. Specs must leave no discretion (vague wording, undefined UI were audited and fixed: Q51-Q62, D15).
 - Check label wording when relaying answers to subagents (a Q24 answer was once mis-relayed and corrected).
-- Docs are English only; chat reports to the user are Japanese.
+- Docs are English only; chat reports to the user are Japanese. Commits: one file per commit, Japanese messages describing the file's role, trailer `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`. Never push without user confirmation.
+- Token saving: one conversation per feature; read only the feature PLAN and the ds sections it cites; build/logcat output reduced to pass/fail plus a few lines.
+- Environment (2026-10-19): emulator `spike26` (API 26) is running (emulator-5570); real device M06 (serial M06-SERIAL, Android 16) is NOT connected now, reconnect with USB debugging approval when real-device checks are needed. adb: `~/AppData/Local/Android/Sdk/platform-tools/adb.exe`.
 - External review (Gemini) points were already applied (WorkManager policy, JavaMail spike, BackHandler).
