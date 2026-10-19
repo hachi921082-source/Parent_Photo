@@ -9,15 +9,21 @@ import com.example.parentphoto.ParentPhotoApp
 import com.example.parentphoto.R
 import com.example.parentphoto.ui.MainActivity
 
+/** 要確認通知の出し入れ(outbox-queue から呼ぶ。テストでは偽物に差し替える)。 */
+interface AttentionAlerter {
+    fun show(overflowDeleted: Boolean)
+    fun cancel()
+}
+
 /**
  * 「要確認」になった写真の通知(ds 10.1)。
  * 固定ID 1001 で毎回置き換える(積み重ねない)。本文は最新のイベントの文言になる。
  * 通知権限が未許可でも例外にならない(通知が出ないだけ)。
  */
-class AttentionNotifier(private val context: Context) {
+class AttentionNotifier(private val context: Context) : AttentionAlerter {
 
     /** overflowDeleted が true なら「古い写真を削除した」文言にする */
-    fun show(overflowDeleted: Boolean) {
+    override fun show(overflowDeleted: Boolean) {
         val text = context.getString(
             if (overflowDeleted) R.string.notif_attention_overflow else R.string.notif_attention,
         )
@@ -45,7 +51,7 @@ class AttentionNotifier(private val context: Context) {
     }
 
     /** 要確認が0件になったとき */
-    fun cancel() {
+    override fun cancel() {
         manager().cancel(NOTIFICATION_ID)
     }
 
