@@ -39,3 +39,6 @@ class OutboxFullException : IllegalStateException("outbox active cap reached")
 
 /** 要確認への移行1回分の結果。moved = 要確認にした件数、overflowDeleted = 上限超過で自動削除した件数。 */
 data class AttentionOutcome(val moved: Int, val overflowDeleted: Int)
+
+/** 今すぐ再送の結果(ds 7.5)。Started = 待機中になった、Waiting = 枠待ち、NotAllowed = 再送できない項目。 */
+enum class ResendOutcome { Started, Waiting, NotAllowed }
