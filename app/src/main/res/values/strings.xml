@@ -2,4 +2,12 @@
 <resources>
     <string name="app_name">FamilyPhoto</string>
     <string name="channel_attention_name">送信できていない写真</string>
+    <!-- 設定の検証エラー(ds 9.3) -->
+    <string name="err_name_empty">表示名を入力してください</string>
+    <string name="err_name_too_long">10文字以内で入力してください</string>
+    <string name="err_email_format">メールアドレスの形式が正しくありません</string>
+    <string name="err_password_length">16文字で入力してください</string>
+    <string name="err_host_empty">SMTPホストを入力してください</string>
+    <string name="err_host_format">SMTPホストの形式が正しくありません</string>
+    <string name="err_port_range">1〜65535の数字を入力してください</string>
 </resources>
