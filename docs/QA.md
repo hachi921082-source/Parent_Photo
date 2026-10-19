@@ -368,3 +368,33 @@ Adopted by the user (not open): on send failure the resized photo is saved in an
 - Background: Base64 makes 18 MB of photos about 24.7 MB, too close to Gmail's 25 MB.
 - Options: A ★ split at about 15 MB total; B keep 18 MB.
 - Answer: A. CONFIRMED by the user. Supersedes the 18 MB in Q41.
+
+## UI audit decisions (Q51-Q58, all CONFIRMED by the user, 2026-10-19)
+Background: a self-review found places where the implementer would have had to choose user-visible behavior. The user decided each item below.
+
+### Q51. System font scale on father-facing screens [RESOLVED]
+- Options: A ignore system font scale (fontScale = 1f), sizes stay 28/36 sp; B follow system scale; C cap at 1.3.
+- Answer: A. CONFIRMED by the user. The hidden settings screen follows the system scale.
+
+### Q52. Father-facing screen layouts and colors [RESOLVED]
+- Options: A Preview-based screens keep the photo dimmed, centered 36 sp label, 取り消す pinned bottom; Sent/QueuedNotice plain full-screen with centered 36 sp text; photo min 30 percent height, 16 dp spacing; recipient buttons filled primary, やり直す outlined; Material3 default light colors with explicit hex tokens; B plain white for all; C mock from the user.
+- Answer: A. CONFIRMED by the user. Defined in detailed-spec 3.4.
+
+### Q53. 保存 button enabled rule [RESOLVED]
+- Options: A enabled whenever dirty, validate on press; B live validation with disabled button; C live validation with errors after edit.
+- Answer: A (also for the recipient dialog). CONFIRMED by the user. Removes the contradiction between "enabled when dirty and valid" and "validate on 保存".
+
+### Q54. App name [RESOLVED]
+- Answer: FamilyPhoto (launcher label, app_name, release file name FamilyPhoto_YYYYMMDD-HHMMSS.apk). Package stays com.example.parentphoto. CONFIRMED by the user.
+
+### Q55. Camera / OutboxFull / Capturing layout and badges [RESOLVED]
+- Answer: badges as dark 60 percent alpha pills with white 20 sp text (final), 未送信 above 送れていません, 8 dp apart, warning badge #E65100 with white text; OutboxFull guidance bottom-center above the disabled shutter (36 sp, dark box), camera feed stays live; Capturing keeps a disabled shutter plus a 32 dp indicator centered; a second capture failure restarts the 3000 ms timer. CONFIRMED by the user.
+
+### Q56. Notification behavior [RESOLVED]
+- Answer: no title, BigTextStyle, onlyAlertOnce = true, autoCancel = false, text reflects the latest event. CONFIRMED by the user.
+
+### Q57. Settings feedback [RESOLVED]
+- Answer: Material3 Snackbar (Short, no action) for "順番待ちです。しばらくお待ちください" and "保存しました" only; no other success feedback. CONFIRMED by the user.
+
+### Q58. Remaining UI details [RESOLVED]
+- Answer: all recommended options adopted: password 変更 with キャンセル and empty-after-変更 invalid; test-send first recipient preselected and hint priority (no recipients, invalid saved settings, dirty); result dialog only OK; unsent list group order, sorting, headers, row layout; send log mapping table and one entry per mail; sub-screen back and dialog dismissal rules; precedence re-evaluated on every onResume; field keyboards, max lengths, host/port/address messages, first error focused, autofill off; accessibility descriptions; no animation; exact values (3000 ms failure message, 96 dp thumbnail, tone 200 ms); all UI strings in res/values/strings.xml. CONFIRMED by the user.
