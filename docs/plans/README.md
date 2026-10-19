@@ -6,34 +6,43 @@ Source of truth: `docs/spec.md`, `docs/detailed-spec.md` (ds), `docs/QA.md`. Sec
 
 ## Index
 1. Features and order
-2. Pending features
+2. Former pending features (now planned)
 3. Confirmed planning decisions
 4. Cross-plan interface contracts
+5. Status of earlier BLOCKED/fake markers
+6. Notes for implementers
 
 ## 1. Features and order
 
-| # | Feature | Directory | Scope | Branch |
-|---|---|---|---|---|
-| 1 | smtp-send-spike (FIRST) | `smtp-send-spike/` | Throwaway JavaMail multipart+JPEG send, R8 release, API 26-level and Android 14/15 (ds 6.0) | `feature/smtp-send-spike` |
-| 2 | app-foundation | `app-foundation/` | Gradle, manifest, deps, R8/packaging, Application, constants, time helper | `feature/app-foundation` |
-| 3 | settings-storage | `settings-storage/` | DataStore, Keystore password crypto, recipients, SetupRequired (ds 8) | `feature/settings-storage` |
-| 4 | camera-capture | `camera-capture/` | CameraX, capture, resize, permission (ds 4) | `feature/camera-capture` |
-| 5 | photo-send-flow | `photo-send-flow/` (3 sub-plans) | MainViewModel state machine, father-facing UI, undo window, foreground send, feedback (ds 2, 3, 10.2) | `feature/photo-send-flow` |
-| 6 | settings-screen | `settings-screen/` (4 sub-plans) | Hidden settings UI (ds 9, 3.3) | `feature/settings-screen` |
-| 7 | attention-notifications | `attention-notifications/` | Notification, badges, notification permission (ds 10.1, 3.2) | `feature/attention-notifications` |
-| 8 | acceptance-verification | `acceptance-verification/` | Run ds 12 checklist, release build check | `feature/acceptance-verification` |
+| # | Feature | Directory | Scope | Branch | Status |
+|---|---|---|---|---|---|
+| 1 | smtp-send-spike | `smtp-send-spike/` | Throwaway JavaMail multipart+JPEG send, R8 release, API 26-level and Android 14/15 (ds 6.0) | `feature/smtp-send-spike` | DONE (PASS, merged to main; `RESULT.md`; ds 11.4/6.3 and D14 updated). Code under `spike/` is throwaway and is not part of `app`. |
+| 2 | app-foundation | `app-foundation/` | Gradle, manifest, deps, R8/packaging, Application, constants, time helper | `feature/app-foundation` | planned |
+| 3 | settings-storage | `settings-storage/` | DataStore, Keystore password crypto, recipients, SetupRequired (ds 8) | `feature/settings-storage` | planned |
+| 4 | camera-capture | `camera-capture/` | CameraX, capture, resize, permission (ds 4) | `feature/camera-capture` | planned |
+| 5 | mail-composition-smtp | `mail-composition-smtp/` (1 plan) | MIME composition, session, offline shortcut, error classification, Logcat/send-log recording (ds 5, 6.1-6.4) | `feature/mail-composition-smtp` | planned |
+| 6 | outbox-queue | `outbox-queue/` (3 sub-plans) | Room, counting, creation, batching, overflow, recovery, resume/promotion (ds 7.1-7.3, 7.5-7.8, 2.4) | `feature/outbox-queue` | planned |
+| 7 | outbox-worker | `outbox-worker/` (2 sub-plans) | WorkManager run, KEEP/REPLACE scheduling, backoff, 24 h expiry, resume triggers (ds 7.4, 7.5) | `feature/outbox-worker` | planned |
+| 8 | photo-send-flow | `photo-send-flow/` (3 sub-plans) | MainViewModel state machine, father-facing UI, undo window, foreground send, feedback (ds 2, 3, 10.2) | `feature/photo-send-flow` | planned (real wiring after 5-6) |
+| 9 | settings-screen | `settings-screen/` (4 sub-plans) | Hidden settings UI (ds 9, 3.3) | `feature/settings-screen` | planned (PLAN-3/4 and resume/delete wiring after 5-7) |
+| 10 | attention-notifications | `attention-notifications/` | Notification, badges, notification permission (ds 10.1, 3.2) | `feature/attention-notifications` | planned (call sites are in outbox-queue PLAN-2) |
+| 11 | acceptance-verification | `acceptance-verification/` | Run ds 12 checklist, release build check | `feature/acceptance-verification` | planned |
 
-Order: 1 first. Then 2, 3, 4 (3 and 4 are independent after 2). Then 5, 6, 7 UI-side parts. The pending features (section 2) must be planned and built before the send-dependent parts of 5, 6, 7 are completed; those parts are marked "BLOCKED on pending" inside the plans.
+(Numbers are the build order; the old numbering 5-8 became 8-11.)
 
-## 2. Pending features (pending spike result)
+Order: spike done. Then 2 (app-foundation); 3 and 4 are independent after 2. Then 5 (mail), 6 (outbox-queue), 7 (outbox-worker). Plan 6 needs the types of 5 and `AttentionNotifier` from 10 (use a fake notifier until 10 is built; 10 can be built any time after 2-3). The UI-side parts of 8 and 9 can be built earlier against fakes (section 4), but their real wiring is done after 5-7. 11 last.
 
-Per user decision (Q7), these are NOT planned yet; their directories do not exist. They are written only after the spike result is recorded and the user is consulted.
+Dependency summary: 5 <- 2, 3; 6 <- 2, 3, 5 (types), 10 (interface); 7 <- 5, 6; 8 <- 2, 3, 4 and 5-6 for wiring; 9 <- 2, 3 and 5-7 for wiring.
+
+## 2. Former pending features (now planned)
 
 | Feature | Scope | ds sections |
 |---|---|---|
-| mail-composition-smtp | MIME composition, session properties, offline shortcut, error classification, send log recording | 5, 6.1-6.4 |
-| outbox-queue | Room schema, counting, item creation, batching, 15 MB split, 要確認 cap/overflow, duplicates, startup recovery | 7.1-7.3, 7.6-7.8, 2.4 |
-| outbox-worker | WorkManager KEEP, SENDING_BG, backoff, 24 h expiry, resume triggers, 今すぐ再送 | 7.4, 7.5 |
+| mail-composition-smtp | MIME composition, session properties, offline shortcut, error classification, Logcat and send-log recording | 5, 6.1-6.4 |
+| outbox-queue | Room schema, counting, item creation, batching planner, 15 MB split, 要確認 cap/overflow, duplicates, startup recovery, resume and promotion | 7.1-7.3, 7.5-7.8, 2.4 |
+| outbox-worker | WorkManager KEEP, SENDING_BG, backoff, 24 h expiry, resume triggers, 今すぐ再送 scheduling | 7.4, 7.5 |
+
+Split decisions: outbox-queue has three sub-plans (storage-counting, recovery-overflow, resume-promotion; resume/promotion was split out of the earlier two-way proposal because it is large and self-contained); outbox-worker has worker-run and scheduling-resume.
 
 ## 3. Confirmed planning decisions (user answers)
 - Preview reserves one active slot (ds 2.4): confirmed.
@@ -43,11 +52,27 @@ Per user decision (Q7), these are NOT planned yet; their directories do not exis
 - Success feedback: vibration 300 ms + `TONE_PROP_ACK`; vibration only in silent/vibrate mode.
 - Scaffolding is its own plan (`app-foundation`).
 - All other ds `[ASSUMPTION]` items are accepted as written. Any conflict found while planning is a new question to the user, not decided by the developer.
-- User supplies a Gmail app password via a local git-ignored file, an API 26-level emulator, and an Android 14/15 device (for the spike).
+- User supplies a Gmail app password via a local git-ignored file, an API 26-level emulator, and an Android 14/15 device (used by the spike; the acceptance run reuses them).
+- Duplicate mails after an ambiguous failure ("Exception reading response") are accepted (D14).
 
 ## 4. Cross-plan interface contracts
-Plans 5, 6, 7 are written against these names from ds 11.1 so the pending plans can implement them later without rework. Exact signatures are fixed by the pending plans.
-- `OutboxRepository`: observe `activeCount`, `attentionCount`, item lists; create item (phase CANCEL_WINDOW); phase transitions; delete; resume.
-- `SmtpSender` / `MailResult`: foreground single-photo send and text-only test send, with error classification.
-- Send log writer.
-Until the pending plans exist, sub-plans use fakes behind these interfaces only for UI development and tests.
+Defined now (exact names in the owning plans); plans 8, 9, 10 use fakes behind them until the real feature is built.
+- `OutboxRepository` (owner: `outbox-queue/PLAN.md` section 2): observe `activeCount`, `attentionCount`, `items`, `sendLog`, `recoveryDone`; `setPreviewExists`; `createItem`, `deleteItem`, `setPhase`, `markSent`, `markQueued(itemId, MailResult)`; `countForRecipient`, `onRecipientDeleted`, `resendNow`, `resumeAfterSetupFix`, `deleteManual`.
+- `SmtpSender` / `MailResult` (owner: `mail-composition-smtp/PLAN.md` section 2): `sendForeground(itemId)`, `sendBatch(request)`, `sendTest(recipient)`; results `Success | Offline | RecipientMissing | Failure(kind, code, ...)`.
+- Send log writer: `SendLogWriter` interface (mail-composition-smtp section 2.3), Room implementation in outbox-queue PLAN-1 section 6; display strings stay in settings-screen PLAN-4.
+- `WorkScheduler` (`enqueueDefault`, `triggerNow`): owned by outbox-queue, implemented by outbox-worker `OutboxScheduler`.
+- `AttentionNotifier` (`show(overflowDeleted)`, `cancel()`): owned by attention-notifications; called from outbox-queue PLAN-2.
+
+## 5. Status of earlier BLOCKED/fake markers
+The plans written earlier (photo-send-flow, settings-screen, attention-notifications, app-foundation, acceptance-verification) were not rewritten. Read their phrases like this:
+- "BLOCKED on pending ..." / "pending plans" / "fake until pending plans" now means: the dependency is planned in the new plans above; build the UI side against fakes, then replace the fakes when plans 5-7 are implemented. The contract names they use (`createItem`, `deleteItem`, `setPhase`, `markSent`, `markQueued`, `sendForeground`, `activeCount`, `attentionCount`, recovery-finished signal) all exist unchanged in the new plans.
+- attention-notifications section 4 "call sites added by outbox-queue" = outbox-queue PLAN-2 section 3.
+- app-foundation section 3 says R8 and `pickFirsts` "exactly as found necessary in the spike result": that result is `smtp-send-spike/RESULT.md` sections 3 and 6 and ds 11.4 (keep rules from `spike/app/proguard-rules.pro` are mandatory; plus `resources.excludes += META-INF/LICENSE.md, META-INF/NOTICE.md`; mailcap `pickFirsts`). `ParentPhotoApp` additionally builds the outbox container and starts recovery and observers (outbox-queue PLAN.md section 3) when plan 6 is built.
+
+## 6. Notes for implementers (clarifications, no contract change)
+- Recovery runs in `ParentPhotoApp.onCreate` on the application scope and exposes `recoveryDone` / `awaitRecovery()`; `MainViewModel` keeps Loading until it is true (photo-send-flow PLAN-1 "recovery-finished signal"), the worker waits for it too (outbox-queue PLAN-2 section 4).
+- `previewExists` (photo-send-flow PLAN-1 section 7): true in Preview; on 取り消す set it true before `deleteItem`; after `createItem` set it false (outbox-queue PLAN-1 section 4).
+- Recipient delete (settings-screen PLAN-2): call `SettingsRepository.deleteRecipient` first, then `OutboxRepository.onRecipientDeleted(id)`; delete dialog count from `countForRecipient(id)` (outbox-queue PLAN-2 section 5).
+- Test send (settings-screen PLAN-3): `SmtpSender.sendTest` writes TEST_OK / TEST_FAILED itself; on success the ViewModel calls `OutboxRepository.resumeAfterSetupFix()`. SMTP save (PLAN-1) also calls `resumeAfterSetupFix()`.
+- 今すぐ再送 (PLAN-4) calls `resendNow(itemId)`; `Waiting` shows "順番待ちです。しばらくお待ちください".
+- 60 s foreground cap: enforced inside `SmtpSender` (authoritative); the `withTimeoutOrNull(FG_SEND_TIMEOUT_MS)` in photo-send-flow PLAN-3 is a harmless backstop (null = timeout).
