@@ -15,7 +15,7 @@
 10. Notifications, haptics, sound
 11. Module layout, manifest, build notes
 12. Acceptance checklist (mapped to spec.md)
-(Subsections 3.4 Father-facing layout and colors, 9.8 Settings form details, 9.9 Accessibility text were added by the 2026-10-19 UI audit, Q51-Q58, D15.)
+(Subsections 3.4 Father-facing layout and colors, 9.8 Settings form details, 9.9 Accessibility text were added by the 2026-10-19 UI audit, Q51-Q62, D15.)
 
 ## 1. Scope and conventions
 - Android only (Kotlin, Jetpack Compose, min API 26). No server. UI text Japanese. Portrait-locked UI. App name (launcher label, `android:label`, `app_name`): `FamilyPhoto` [CONFIRMED by the user, Q54]; package stays `com.example.parentphoto`.
@@ -127,8 +127,8 @@ Single `MainViewModel` holds `UiState`; Compose renders one screen per state. Na
 Theme: Material3 default light color scheme (static, no dynamic color). Tokens used (hex): background `#FFFBFE`, onBackground `#1C1B1F`, primary `#6750A4`, onPrimary `#FFFFFF`, secondary `#625B71`, outline `#79747E`, primaryContainer `#EADDFF`, onPrimaryContainer `#21005D`, scrim `#000000`. Warning badge: `#E65100` with white text. Shapes: buttons rounded 12 dp; badges pill (fully rounded). No animation or transition between states (instant switch; the countdown number changes without animation).
 - General: all content is horizontally centered with 16 dp margins and 16 dp spacing between elements. Message text 36 sp, centered, onBackground color. Button text 28 sp, centered, maximum 2 lines.
 - Loading: full-screen `background`, nothing else, no timeout.
-- SetupRequired: `background`, "設定が必要です" centered vertically and horizontally (36 sp); settings icon top-right.
-- PermissionDenied: `background`, guidance text (36 sp) centered above, 設定を開く button (filled primary, father button size level, full width, 16 dp margins) below it; settings icon top-right.
+- SetupRequired: `background`, "設定が必要です" centered vertically and horizontally (36 sp); settings icon top-right (`#49454F`, same as Preview) [CONFIRMED by the user, Q60].
+- PermissionDenied: `background`, guidance text (36 sp) centered above, 設定を開く button (filled primary, father button size level, full width, 16 dp margins) below it; settings icon top-right (`#49454F`, same as Preview) [CONFIRMED by the user, Q60].
 - Camera: full-screen live PreviewView. Shutter: 72 dp circle, bottom-center, 32 dp above the bottom edge, white fill with `#1C1B1F` 4 dp ring. Badges top-left (below the status bar inset, 16 dp margin): dark pill = `#000000` at 60 percent alpha, white 20 sp text, 12 dp horizontal and 6 dp vertical padding; "未送信 N件" above, "送れていません M件" below, 8 dp apart; the warning badge uses opaque background `#E65100` with white text. Settings icon top-right, white at 70 percent alpha. Failure message (2.3): centered box, `#000000` 60 percent alpha background, white 36 sp text, 16 dp padding, 16 dp rounded corners.
 - OutboxFull: same as Camera (camera feed stays live); the shutter is disabled (40 percent alpha, ignores taps); the guidance text (36 sp, white) sits bottom-center directly above the shutter (16 dp gap) in a `#000000` 60 percent alpha box with 16 dp padding.
 - Capturing: Camera layout with the shutter visible but disabled (40 percent alpha); a 32 dp white `CircularProgressIndicator` centered over the camera feed; badges as in Camera; no settings icon, no other buttons.
@@ -402,6 +402,6 @@ Content descriptions (Japanese, in strings.xml): shutter "撮影", settings icon
 - [ ] 5 Outbox: failure queues the photo; WorkManager network constraint, 15 min exponential backoff, stops after 24 h -> 要確認 (photo kept); auth/permanent -> 要確認 immediately; batching per recipient with 15 MB split; settings read at send time; recipient edit uses new address, delete -> 要確認; 要確認 cap 10 with oldest deleted on overflow and logged; resume on settings save / test success / 今すぐ再送 (waits if no slot; promoted oldest-first by OutboxRepository; manual tap writes RESEND_REQUESTED and restarts the 24 h window); duplicates tolerated; startup recovery sends killed-in-flight items.
 - [ ] 5 Notification: channel created at app start; shown only on becoming 要確認; overflow wording when the oldest photo was removed; tap brings the existing task to front; cancelled when 要確認 count is 0; permission requested once on API 33+.
 - [ ] 6 Worker safety: triggers never cancel a RUNNING worker; items set to SENDING_BG before send; cancellation leaves items QUEUED; back handlers ignore back in Preview/CancelWindow/Sending/Sent/QueuedNotice (Capturing and Loading also).
-- [ ] UI audit (Q51-Q58): father screens ignore system font scale; layouts and colors per 3.4; 保存 enabled when dirty and validates on press; Snackbars only for 保存しました and 順番待ち; notification BigText, onlyAlertOnce, not auto-cancelled; app name FamilyPhoto.
-- [ ] 7 Unresolved: none; all Q1-Q58 reflected.
+- [ ] UI audit (Q51-Q62): father screens ignore system font scale; layouts and colors per 3.4; 保存 enabled when dirty and validates on press; Snackbars only for 保存しました and 順番待ち; notification BigText, onlyAlertOnce, not auto-cancelled; app name FamilyPhoto.
+- [ ] 7 Unresolved: none; all Q1-Q62 reflected.
 - [ ] Release: R8 build sends mail correctly; manifest has INTERNET, CAMERA, POST_NOTIFICATIONS, VIBRATE, ACCESS_NETWORK_STATE.
