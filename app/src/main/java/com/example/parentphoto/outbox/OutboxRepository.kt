@@ -110,13 +110,33 @@ class OutboxRepository(
      * - 枠待ちの要確認があり、待機中 + プレビュー予約 < 5 になったら古い順に繰り上げる(ds 7.5)。
      */
     fun startObservers(): Job = appScope.launch {
-        launch { attentionCount.collect { if (it == 0) notifier.cancel() } }
         launch {
-            combine(activeCount, previewExists, dao.pendingResendCount()) { active, preview, pending ->
-                Triple(active, preview, pending)
-            }.distinctUntilChanged().collect { (active, preview, pending) ->
-                if (pending > 0 && active + (if (preview) 1 else 0) < Constants.ACTIVE_CAP) promote()
+            guarded("cancel observer") {
+                attentionCount.collect { if (it == 0) guarded("cancel") { notifier.cancel() } }
             }
+        }
+        launch {
+            guarded("promote observer") {
+                combine(activeCount, previewExists, dao.pendingResendCount()) { active, preview, pending ->
+                    Triple(active, preview, pending)
+                }.distinctUntilChanged().collect { (active, preview, pending) ->
+                    if (pending > 0 && active + (if (preview) 1 else 0) < Constants.ACTIVE_CAP) {
+                        // 1回の失敗で監視を止めない(次の件数変化で再試行する)
+                        guarded("promote") { promote() }
+                    }
+                }
+            }
+        }
+    }
+
+    // 監視中の例外でアプリを落とさない。キャンセルはそのまま伝える
+    private suspend fun guarded(what: String, block: suspend () -> Unit) {
+        try {
+            block()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            OutboxLog.w("$what failed: ${e.javaClass.name}")
         }
     }
 
@@ -306,14 +326,19 @@ class OutboxRepository(
             row.state == ItemState.ATTENTION && row.attentionReason != AttentionReason.RECIPIENT_DELETED -> {
                 record(SendLogResult.RESEND_REQUESTED, nameOf(row.recipientId), null)
                 dao.setResendPending(itemId)
-                promote()
-                // 監視側が先に繰り上げた場合も含め、行の現在の状態で判定する
-                val now = dao.get(itemId)
-                if (now != null && now.state == ItemState.WAITING) ResendOutcome.Started else ResendOutcome.Waiting
+                val promoted = promoteIds()
+                // ここで繰り上げた(直後にワーカーが送って行が消えても)、または監視側が先に繰り上げたなら Started
+                val current = dao.get(itemId)
+                if (itemId in promoted || current?.state == ItemState.WAITING) {
+                    ResendOutcome.Started
+                } else {
+                    ResendOutcome.Waiting
+                }
             }
             row.state == ItemState.WAITING && row.phase == Phase.QUEUED -> {
-                record(SendLogResult.RESEND_REQUESTED, nameOf(row.recipientId), null)
+                // 直前に状態が変わって更新できなければ NotAllowed(ログも書かない)
                 if (dao.restartWindow(itemId, clock()) == 0) return@withContext ResendOutcome.NotAllowed
+                record(SendLogResult.RESEND_REQUESTED, nameOf(row.recipientId), null)
                 scheduler.triggerNow()
                 ResendOutcome.Started
             }
@@ -338,7 +363,10 @@ class OutboxRepository(
      * 枠の確認と書き換えは1トランザクションなので、同時の createItem と合わせても6件目はできない。
      * 1件以上戻したら、DBを書いた後にワーカーをすぐ起こす。戻した件数を返す。
      */
-    suspend fun promote(): Int = promoteMutex.withLock {
+    suspend fun promote(): Int = promoteIds().size
+
+    /** promote() の本体。戻した項目のidを返す(今すぐ再送の結果判定に使う)。 */
+    internal suspend fun promoteIds(): List<ItemId> = promoteMutex.withLock {
         val reservation = if (previewExists.value) 1 else 0
         val now = clock()
         val promoted = db.withTransaction {
@@ -358,7 +386,7 @@ class OutboxRepository(
             scheduler.triggerNow()
             OutboxLog.d("promoted ${promoted.size}")
         }
-        promoted.size
+        promoted
     }
 
     // ---- 前面送信・送信ログ(mail-composition-smtp 2.3) ----
