@@ -52,16 +52,51 @@ interface OutboxDao {
     @Query("UPDATE outbox_item SET phase = :phase WHERE id IN (:ids) AND state = 'WAITING'")
     suspend fun updatePhaseAll(ids: List<String>, phase: Phase): Int
 
-    // 要確認への移行(上限・通知は PLAN-2 の moveToAttention が担う)
+    // 要確認への移行。まだ待機中の行だけを動かす(上限・通知は OutboxRepository.moveToAttention が担う)
     @Query(
         """
         UPDATE outbox_item
         SET state = 'ATTENTION', phase = 'QUEUED', attentionReason = :reason,
             attentionSinceMillis = :now, resendPending = 0
-        WHERE id IN (:ids)
+        WHERE id IN (:ids) AND state = 'WAITING'
         """,
     )
     suspend fun setAttention(ids: List<String>, reason: AttentionReason, now: Long): Int
+
+    @Query("SELECT COUNT(*) FROM outbox_item WHERE state = 'ATTENTION'")
+    suspend fun attentionCountNow(): Int
+
+    // 上限超過で消す候補: 要確認になったのが古い順(同時なら撮影の古い順、次にid)
+    @Query(
+        """
+        SELECT * FROM outbox_item WHERE state = 'ATTENTION'
+        ORDER BY attentionSinceMillis, capturedAtMillis, id
+        LIMIT :limit
+        """,
+    )
+    suspend fun oldestAttention(limit: Int): List<OutboxItemEntity>
+
+    // 起動時の復旧: 前のプロセスで処理中だった行を送信待ちに戻す(ds 7.6)
+    @Query(
+        """
+        UPDATE outbox_item SET phase = 'QUEUED'
+        WHERE state = 'WAITING' AND phase IN ('CANCEL_WINDOW', 'SENDING_FG', 'SENDING_BG')
+        """,
+    )
+    suspend fun requeueInFlight(): Int
+
+    @Query("SELECT id FROM outbox_item")
+    suspend fun allIds(): List<String>
+
+    @Query("SELECT id FROM outbox_item WHERE state = 'WAITING' AND phase = 'QUEUED'")
+    suspend fun queuedIds(): List<String>
+
+    @Query("SELECT id FROM outbox_item WHERE recipientId = :recipientId AND state = 'WAITING' AND phase = 'QUEUED'")
+    suspend fun queuedIdsForRecipient(recipientId: String): List<String>
+
+    // 24時間を過ぎた送信待ち(retryStartMillis < threshold。ちょうど24時間は対象外)
+    @Query("SELECT id FROM outbox_item WHERE state = 'WAITING' AND phase = 'QUEUED' AND retryStartMillis < :threshold")
+    suspend fun expiredQueuedIds(threshold: Long): List<String>
 
     @Query("SELECT * FROM outbox_item WHERE state = 'WAITING' AND phase = 'QUEUED'")
     suspend fun queuedItems(): List<OutboxItemEntity>
