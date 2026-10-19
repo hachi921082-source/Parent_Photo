@@ -26,6 +26,8 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.UUID
@@ -37,7 +39,7 @@ import java.util.UUID
  *
  * PLAN-1: 保存・件数・項目作成・前面送信からの呼び出し・送信ログ・ワーカー用の取り込み/完了処理。
  * PLAN-2: 要確認への移行と上限(10件)・通知・起動時の復旧・送り先削除・期限切れ。
- * 再開・繰り上げ・今すぐ再送は PLAN-3 で追加する。
+ * PLAN-3: 再開(設定保存・テスト成功)・今すぐ再送・空き枠への繰り上げ。
  *
  * 重複送信について(ds 7.7, D14): 届いたか不明な失敗(DATA後のタイムアウト等)もそのまま再送する。
  * 家族に同じ写真が2通届くことは受け入れ済みであり、重複排除や固定 Message-ID は入れない。
@@ -90,6 +92,9 @@ class OutboxRepository(
 
     private val recoveryDoneState = MutableStateFlow(false)
 
+    // 繰り上げを同時に2つ走らせない
+    private val promoteMutex = Mutex()
+
     /** 起動時の復旧が終わったら true。画面は終わるまで Loading、ワーカーは awaitRecovery() で待つ。 */
     val recoveryDone: StateFlow<Boolean> = recoveryDoneState.asStateFlow()
 
@@ -99,10 +104,20 @@ class OutboxRepository(
 
     // ---- アプリ起動時(ParentPhotoApp.onCreate から1回だけ呼ぶ) ----
 
-    /** 要確認が0件になったら通知を消す監視を始める(ds 10.1)。起動直後の0での cancel は無害。 */
+    /**
+     * アプリ全体の監視を始める。
+     * - 要確認が0件になったら通知を消す(ds 10.1)。起動直後の0での cancel は無害。
+     * - 枠待ちの要確認があり、待機中 + プレビュー予約 < 5 になったら古い順に繰り上げる(ds 7.5)。
+     */
     fun startObservers(): Job = appScope.launch {
-        attentionCount.collect { if (it == 0) notifier.cancel() }
-        // TODO(PLAN-3): 枠が空いたときの繰り上げ監視を別の launch で加える
+        launch { attentionCount.collect { if (it == 0) notifier.cancel() } }
+        launch {
+            combine(activeCount, previewExists, dao.pendingResendCount()) { active, preview, pending ->
+                Triple(active, preview, pending)
+            }.distinctUntilChanged().collect { (active, preview, pending) ->
+                if (pending > 0 && active + (if (preview) 1 else 0) < Constants.ACTIVE_CAP) promote()
+            }
+        }
     }
 
     /** 起動時の復旧を始める。失敗しても recoveryDone は true にする(Loading で止まらないため。次回起動で再試行)。 */
@@ -138,7 +153,8 @@ class OutboxRepository(
         val queued = dao.queuedIds().isNotEmpty()
         if (queued) scheduler.enqueueDefault()
         OutboxLog.d("recovered requeued=$requeued orphanFiles=$orphanFiles missingRows=${missing.size} queued=$queued")
-        // TODO(PLAN-3): ここで promote() を1回呼ぶ(再起動をまたいだ resendPending の項目を進める)
+        // 再起動をまたいで枠待ちのまま残った項目を進める
+        promote()
     }
 
     // ---- 父親側の流れ ----
@@ -146,9 +162,11 @@ class OutboxRepository(
     /**
      * 送り先ボタンを押したときに項目を作る(ds 7.3)。写真を outbox/{id}.jpg にコピーしてから行を入れる。
      * 待機中が5件以上なら OutboxFullException(ファイルは残さない)。preview ファイルは触らない。
+     * 起動時の復旧が終わるまで待つ(復旧の孤立ファイル掃除に作成中の写真を消されないため。画面の Loading が主の防御)。
      */
     suspend fun createItem(recipientId: String, capturedAtMillis: Long, previewFile: File): ItemId =
         withContext(ioDispatcher) {
+            awaitRecovery()
             val id = UUID.randomUUID().toString()
             val file = files.importCopy(id, previewFile)
             try {
@@ -273,6 +291,74 @@ class OutboxRepository(
      */
     suspend fun onRecipientDeleted(recipientId: String) {
         moveToAttention(AttentionReason.RECIPIENT_DELETED, select = { dao.queuedIdsForRecipient(recipientId) })
+    }
+
+    /**
+     * 未送信一覧の「今すぐ再送」(ds 7.5 / 9.6)。
+     * - 要確認(宛先削除以外): 枠待ちにして繰り上げを試す。待機中になれば Started、枠が無ければ Waiting。
+     * - 待機中・送信待ち: 24時間の起点を今にしてワーカーをすぐ起こす(Started)。
+     * - 猶予中・送信中・宛先削除・行なし: NotAllowed(ログも書かない)。
+     * 許可されたタップでは必ず RESEND_REQUESTED を記録する。
+     */
+    suspend fun resendNow(itemId: ItemId): ResendOutcome = withContext(ioDispatcher) {
+        val row = dao.get(itemId) ?: return@withContext ResendOutcome.NotAllowed
+        when {
+            row.state == ItemState.ATTENTION && row.attentionReason != AttentionReason.RECIPIENT_DELETED -> {
+                record(SendLogResult.RESEND_REQUESTED, nameOf(row.recipientId), null)
+                dao.setResendPending(itemId)
+                promote()
+                // 監視側が先に繰り上げた場合も含め、行の現在の状態で判定する
+                val now = dao.get(itemId)
+                if (now != null && now.state == ItemState.WAITING) ResendOutcome.Started else ResendOutcome.Waiting
+            }
+            row.state == ItemState.WAITING && row.phase == Phase.QUEUED -> {
+                record(SendLogResult.RESEND_REQUESTED, nameOf(row.recipientId), null)
+                if (dao.restartWindow(itemId, clock()) == 0) return@withContext ResendOutcome.NotAllowed
+                scheduler.triggerNow()
+                ResendOutcome.Started
+            }
+            else -> ResendOutcome.NotAllowed
+        }.also { OutboxLog.d("resendNow id=$itemId -> $it") }
+    }
+
+    /**
+     * SMTP設定の保存成功・テスト送信成功の後に呼ぶ(ds 7.5 / 9.4 / 9.5)。
+     * 理由が AUTH / PERMANENT / RETRY_EXPIRED の要確認を枠待ちにして繰り上げる(宛先削除は再開しない)。
+     * RESEND_REQUESTED は書かない。送信待ちがあれば KEEP で登録する(待機中の再送間隔はリセットしない)。
+     */
+    suspend fun resumeAfterSetupFix() = withContext(ioDispatcher) {
+        val marked = dao.markResumablePending()
+        val promoted = promote()
+        if (dao.queuedIds().isNotEmpty()) scheduler.enqueueDefault()
+        OutboxLog.d("resumeAfterSetupFix marked=$marked promoted=$promoted")
+    }
+
+    /**
+     * 枠待ちの要確認を、空き枠(待機中 + プレビュー予約 < 5)の分だけ古い順に待機中へ戻す(ds 2.4 / 7.5)。
+     * 枠の確認と書き換えは1トランザクションなので、同時の createItem と合わせても6件目はできない。
+     * 1件以上戻したら、DBを書いた後にワーカーをすぐ起こす。戻した件数を返す。
+     */
+    suspend fun promote(): Int = promoteMutex.withLock {
+        val reservation = if (previewExists.value) 1 else 0
+        val now = clock()
+        val promoted = db.withTransaction {
+            val ids = mutableListOf<String>()
+            val pending = dao.pendingResend()
+            var active = dao.activeCountNow()
+            for (row in pending) {
+                if (active + reservation >= Constants.ACTIVE_CAP) break
+                if (dao.promoteRow(row.id, now) > 0) {
+                    ids.add(row.id)
+                    active++
+                }
+            }
+            ids
+        }
+        if (promoted.isNotEmpty()) {
+            scheduler.triggerNow()
+            OutboxLog.d("promoted ${promoted.size}")
+        }
+        promoted.size
     }
 
     // ---- 前面送信・送信ログ(mail-composition-smtp 2.3) ----
