@@ -34,7 +34,7 @@ Indexes: `state`, `recipientId`. Enums are stored by name through explicit `@Typ
 
 ## 2. DAO queries (`OutboxDao`, `SendLogDao`)
 - `activeCount(): Flow<Int>` = `COUNT(*) WHERE state='WAITING'`; `attentionCount(): Flow<Int>` = `state='ATTENTION'`.
-- `observeAll(): Flow<List<OutboxItemEntity>>` ordered `state ASC (WAITING first), CASE WHEN state='WAITING' THEN capturedAtMillis ELSE attentionSinceMillis END, id`. The repository joins recipient names from `SettingsRepository.settings` (combine) to build `OutboxItemView`.
+- `observeAll(): Flow<List<OutboxItemEntity>>` ordered `CASE WHEN state='WAITING' THEN 0 ELSE 1 END (WAITING first; plain state ASC would put ATTENTION first), CASE WHEN state='WAITING' THEN capturedAtMillis ELSE attentionSinceMillis END, id`. The repository joins recipient names from `SettingsRepository.settings` (combine) to build `OutboxItemView`.
 - Single-row ops: `get(id)`, `insert`, `delete`, `updatePhase(id, phase)`.
 - `queuedItems(): List<OutboxItemEntity>` = `state='WAITING' AND phase='QUEUED'`.
 - `pendingResend(): List` = `state='ATTENTION' AND resendPending=1 ORDER BY attentionSinceMillis, capturedAtMillis, id`.
