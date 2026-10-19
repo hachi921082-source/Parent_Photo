@@ -10,7 +10,8 @@ One-touch photo sending app for an elderly, smartphone-unfamiliar father. Author
 - Send: the app mails the resized JPEG directly via JavaMail (`com.sun.mail:android-mail`) over SMTP on `Dispatchers.IO`.
 - UI text is Japanese.
 - Failed sends go to an app-private outbox (WorkManager auto-resend, max 5 active + 10 "要確認", batched per recipient, 3 s undo window before sending).
-- Status: `docs/QA.md` Q1-Q44 all resolved. `docs/detailed-spec.md` rewritten for SMTP + outbox; next step is PLAN.md via developer-lite.
+- App name: FamilyPhoto (package `com.example.parentphoto`).
+- Status: `docs/QA.md` Q1-Q62 all resolved. SMTP spike passed. All PLANs written (`docs/plans/README.md`); next step is implementation via developer-lite, starting with app-foundation. See `docs/HANDOFF.md`.
 
 ## Agent Set
 
