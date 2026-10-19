@@ -100,4 +100,4 @@ Flow: Camera -> Preview/Select -> Undo window (3 s) -> Sending -> Sent -> Camera
 - On recipient tap: undo window, then build the MIME message from the already-resized photo, send via SMTP on Dispatchers.IO; success goes to the Sent screen, failure goes to the outbox. Queued items are sent by WorkManager.
 
 ## 7. Unresolved Items
-None. All questions in `docs/QA.md` (Q1-Q58) are resolved.
+None. All questions in `docs/QA.md` (Q1-Q62) are resolved.
