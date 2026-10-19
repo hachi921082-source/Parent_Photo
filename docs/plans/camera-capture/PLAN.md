@@ -26,7 +26,7 @@ Camera binding, shutter capture, resize to `cache/preview.jpg`, orientation hand
 - Camera init/bind failure at startup: reported as the same error as capture failure; binding retried on next resume.
 
 ## 4. Errors
-`ImageCaptureException`, decode/resize exception, `OutOfMemoryError`, provider/bind failure: delete partial files, log to Logcat tag `ParentPhoto/Camera` (no photo content), return `Result.failure`. The 3 s message "撮影できませんでした。もう一度お試しください" and the state change are in photo-send-flow PLAN-1.
+`ImageCaptureException`, decode/resize exception, `OutOfMemoryError`, provider/bind failure: delete partial files, log to Logcat tag `ParentPhoto/Camera` (no photo content), return `Result.failure`. The failure message "撮影できませんでした。もう一度お試しください" (shown for `CAPTURE_FAILURE_MESSAGE_MS` = 3000 ms; a second failure restarts the timer) and the state change are in photo-send-flow PLAN-1.
 
 ## 5. Tests
 - JVM/instrumented: `ImageProcessor` with rotated EXIF samples (orientation 1, 3, 6, 8), large (4000 px) and small (800 px, no upscale) inputs; output long edge and orientation asserted.
