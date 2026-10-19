@@ -25,7 +25,7 @@ Source of truth: `docs/spec.md`, `docs/detailed-spec.md` (ds), `docs/QA.md`. Sec
 | 7 | outbox-worker | `outbox-worker/` (2 sub-plans) | WorkManager run, KEEP/REPLACE scheduling, backoff, 24 h expiry, resume triggers (ds 7.4, 7.5) | `feature/outbox-worker` | planned |
 | 8 | photo-send-flow | `photo-send-flow/` (3 sub-plans) | MainViewModel state machine, father-facing UI, undo window, foreground send, feedback (ds 2, 3, 10.2) | `feature/photo-send-flow` | planned (real wiring after 5-6) |
 | 9 | settings-screen | `settings-screen/` (4 sub-plans) | Hidden settings UI (ds 9, 3.3) | `feature/settings-screen` | planned (PLAN-3/4 and resume/delete wiring after 5-7) |
-| 10 | attention-notifications | `attention-notifications/` | Notification, badges, notification permission (ds 10.1, 3.2) | `feature/attention-notifications` | planned (call sites are in outbox-queue PLAN-2) |
+| 10 | attention-notifications | `attention-notifications/` | Notification, badges, notification permission (ds 10.1, 3.2) | `feature/attention-notifications` | done (merged; call sites are in outbox-queue PLAN-2) |
 | 11 | acceptance-verification | `acceptance-verification/` | Run ds 12 checklist, release build check | `feature/acceptance-verification` | planned |
 
 (Numbers are the build order; the old numbering 5-8 became 8-11.)
