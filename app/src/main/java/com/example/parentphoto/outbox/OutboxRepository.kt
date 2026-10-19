@@ -171,7 +171,8 @@ class OutboxRepository(
         }
         if (missing.isNotEmpty()) db.withTransaction { dao.deleteAll(missing) }
         val queued = dao.queuedIds().isNotEmpty()
-        if (queued) scheduler.enqueueDefault()
+        // 送信待ちがあれば起動のたびにすぐ再送する(バックオフ待ちもリセット、Q64)。実行中なら後続ワークになる
+        if (queued) scheduler.triggerNow()
         OutboxLog.d("recovered requeued=$requeued orphanFiles=$orphanFiles missingRows=${missing.size} queued=$queued")
         // 再起動をまたいで枠待ちのまま残った項目を進める
         promote()
