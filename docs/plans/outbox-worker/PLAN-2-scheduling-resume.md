@@ -8,6 +8,7 @@ Source: ds 7.4 (Worker paragraph, Enqueue when, Triggers), 7.5 (resume triggers)
 3. Trigger wiring (who calls what)
 4. Write-before-enqueue rule
 5. Tests and device verification
+6. Implementation notes
 
 ## 1. WorkManager configuration
 - Dependency `androidx.work:work-runtime-ktx` (app-foundation). Default initializer is kept.
@@ -62,3 +63,10 @@ Device checks (done in the acceptance run, listed here so the plan is verifiable
 4. Rapid taps of 今すぐ再送 do not start two simultaneous sends (mutex) and do not cancel a running send.
 5. 24 h expiry: use a debug build with `RETRY_WINDOW_MS` overridable through the DI container (test clock or reduced window), verify RETRY_EXPIRED and notification; do not rely on waiting 24 h.
 6. Release (R8) APK: the worker path sends a multi-photo mail (same keep rules as the foreground path).
+
+## 6. Implementation notes (as built)
+- `OutboxScheduler(wm, scope, workerClass = OutboxWorker::class.java)`: `workerClass` is a test seam (androidTest uses a probe worker so no real send runs). The request is built by `buildOutboxRequest` (shared by both unique names). `triggerNow` launches `triggerNowNow()` on the app scope; the RUNNING check reads `getWorkInfosForUniqueWork(..).get()` on `Dispatchers.IO`. A failure there is logged and dropped (the next trigger or startup recovery enqueues again).
+- `ParentPhotoApp.workScheduler` is a lazy property (no container object); `NoOpWorkScheduler` was deleted.
+- Constants: `WORK_OUTBOX_SEND`, `WORK_OUTBOX_SEND_NEXT`, `WORK_TAG_OUTBOX`.
+- Tests: the request contents (constraint, backoff, tag) are checked on the JVM via `workSpec`. `WorkManagerTestInitHelper` needs a real Context and there is no Robolectric, so the scheduler policy tests are instrumented (`OutboxSchedulerTest`, `work-testing` as `androidTestImplementation`).
+- Observed on the device: if the process dies while the worker is sending, WorkManager reschedules that interrupted run with the 15 min backoff on the next start. Recovery's `enqueueDefault` (KEEP) does not shorten that delay, so the requeued photo goes out on the next backoff run, not right away. A kill during the undo window or a foreground send has no running work, so recovery enqueues a fresh work that runs right away.
