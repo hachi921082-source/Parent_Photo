@@ -39,7 +39,7 @@ class OutboxScheduler(private val wm: WorkManager) : WorkScheduler {
 | Event | Caller | Scheduler call |
 |---|---|---|
 | Item becomes QUEUED after failed/offline foreground send | `OutboxRepository.markQueued` | `enqueueDefault()` |
-| Startup recovery found QUEUED items | `OutboxRepository` recovery | `enqueueDefault()` |
+| Startup recovery found QUEUED items | `OutboxRepository` recovery | `triggerNow()` (Q64; resets the backoff at every app start) |
 | SMTP settings saved (resumes AUTH / PERMANENT / RETRY_EXPIRED items) | settings-screen -> `resumeAfterSetupFix()` | `triggerNow()` via `promote()` when something was promoted; `enqueueDefault()` otherwise if QUEUED exist |
 | Successful test send | settings-screen PLAN-3 -> `resumeAfterSetupFix()` | same as above |
 | 今すぐ再送 on a 要確認 item | `resendNow` | `triggerNow()` (when promoted) |
@@ -69,4 +69,5 @@ Device checks (done in the acceptance run, listed here so the plan is verifiable
 - `ParentPhotoApp.workScheduler` is a lazy property (no container object); `NoOpWorkScheduler` was deleted.
 - Constants: `WORK_OUTBOX_SEND`, `WORK_OUTBOX_SEND_NEXT`, `WORK_TAG_OUTBOX`.
 - Tests: the request contents (constraint, backoff, tag) are checked on the JVM via `workSpec`. `WorkManagerTestInitHelper` needs a real Context and there is no Robolectric, so the scheduler policy tests are instrumented (`OutboxSchedulerTest`, `work-testing` as `androidTestImplementation`).
-- Observed on the device: if the process dies while the worker is sending, WorkManager reschedules that interrupted run with the 15 min backoff on the next start. Recovery's `enqueueDefault` (KEEP) does not shorten that delay, so the requeued photo goes out on the next backoff run, not right away. A kill during the undo window or a foreground send has no running work, so recovery enqueues a fresh work that runs right away.
+- Q64 (user decision, ds 7.6): if the process dies while the worker is sending, WorkManager reschedules that interrupted run with the 15 min backoff. Startup recovery therefore calls `triggerNow()` (not `enqueueDefault()`) whenever any QUEUED row exists after recovery, so every app start resets the backoff and retries immediately (follow-up work if a run is RUNNING). Accepted trade-off: more frequent retries when the app is opened often.
+- `OutboxWorker.toResult`: an unexpected non-cancellation exception from the run is logged (class name only, `ParentPhoto/Worker`) and mapped to `Result.retry()`; cancellation propagates. `enqueueDefault` and `triggerNow` both catch and log enqueue failures.
