@@ -9,6 +9,9 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.example.parentphoto.ParentPhotoApp
 import com.example.parentphoto.R
 import com.example.parentphoto.ui.MainActivity
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -24,6 +27,13 @@ class AttentionNotifierTest {
 
     private fun posted() = nm.activeNotifications.filter { it.id == AttentionNotifier.NOTIFICATION_ID }
 
+    // 通知の反映は非同期なので、投稿が見えるまで最大3秒待つ
+    private fun awaitPosted(): List<android.service.notification.StatusBarNotification> {
+        val deadline = System.currentTimeMillis() + 3000
+        while (System.currentTimeMillis() < deadline && posted().isEmpty()) Thread.sleep(50)
+        return posted()
+    }
+
     private fun Notification.text() = extras.getCharSequence(Notification.EXTRA_TEXT).toString()
     private fun Notification.bigText() = extras.getCharSequence(Notification.EXTRA_BIG_TEXT).toString()
 
@@ -34,6 +44,13 @@ class AttentionNotifierTest {
             InstrumentationRegistry.getInstrumentation().uiAutomation
                 .grantRuntimePermission(ctx.packageName, android.Manifest.permission.POST_NOTIFICATIONS)
         }
+        // アプリ起動時の監視(要確認0件で cancel)が投稿直後の通知を消さないよう、起動処理が落ち着くまで待つ
+        runBlocking {
+            val outbox = (ctx.applicationContext as ParentPhotoApp).outboxRepository
+            outbox.awaitRecovery()
+            outbox.attentionCount.first()
+            delay(300)
+        }
         notifier.cancel()
     }
 
@@ -43,7 +60,7 @@ class AttentionNotifierTest {
     @Test
     fun 通常文言で投稿される() {
         notifier.show(false)
-        val list = posted()
+        val list = awaitPosted()
         assertEquals(1, list.size)
         val n = list[0].notification
         val text = ctx.getString(R.string.notif_attention)
@@ -82,7 +99,7 @@ class AttentionNotifierTest {
     @Test
     fun タップ意図はMainActivity前面化でImmutable() {
         notifier.show(false)
-        val pi = posted()[0].notification.contentIntent
+        val pi = awaitPosted()[0].notification.contentIntent
         if (android.os.Build.VERSION.SDK_INT >= 31) assertTrue(pi.isImmutable)
         if (android.os.Build.VERSION.SDK_INT >= 31) assertTrue(pi.isActivity)
         // 同じ内容(フラグ込み)のPendingIntentが既に存在し、通知のものと同一であることで確認する
@@ -99,8 +116,11 @@ class AttentionNotifierTest {
     @Test
     fun cancelで消える() {
         notifier.show(false)
-        assertEquals(1, posted().size)
+        assertEquals(1, awaitPosted().size)
         notifier.cancel()
+        // 取り消しの反映も非同期なので消えるまで待つ
+        val deadline = System.currentTimeMillis() + 3000
+        while (System.currentTimeMillis() < deadline && posted().isNotEmpty()) Thread.sleep(50)
         assertTrue(posted().isEmpty())
     }
 }

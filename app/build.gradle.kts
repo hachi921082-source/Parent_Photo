@@ -62,6 +62,11 @@ android {
     }
 }
 
+// Room のスキーマJSONを app/schemas/ に出力してリポジトリに含める(マイグレーション検証用)
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
