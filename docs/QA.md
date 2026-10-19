@@ -413,3 +413,8 @@ Background: a self-review found places where the implementer would have had to c
 
 ### Q63. sendForeground check order: missing recipient vs offline [RESOLVED]
 - Answer: recipient check first. A deleted recipient returns RecipientMissing (straight to 要確認) even when offline; no queueing. CONFIRMED by the user.
+
+### Q64. Retry delay after a kill during a background send [RESOLVED]
+- Context: a kill during the worker's send leaves WorkManager's ~15 min backoff in place; recovery's KEEP enqueue does not shorten it.
+- Options: A accept as spec (recommended by the agent); B `triggerNow` only when recovery requeued rows; C `triggerNow` on every startup.
+- Answer: C. Startup recovery calls `triggerNow` (REPLACE if not RUNNING, else follow-up `outbox-send-next`) instead of `enqueueDefault` whenever any QUEUED row exists after recovery, so every app open resets the backoff and retries immediately. Accepted trade-off: more frequent retries. CONFIRMED by the user.

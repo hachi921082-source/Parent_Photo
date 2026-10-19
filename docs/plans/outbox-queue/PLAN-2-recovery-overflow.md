@@ -35,7 +35,7 @@ Internal (used by PLAN-1 `markQueued`, expiry, recipient deletion, batch results
 Runs once per process, started from `ParentPhotoApp.onCreate` on the application scope (not from the ViewModel) so that a process started by WorkManager is also covered, and finishes before any worker run uses the DB.
 1. Transaction: `UPDATE outbox_item SET phase='QUEUED' WHERE state='WAITING' AND phase IN (CANCEL_WINDOW, SENDING_FG, SENDING_BG)`. (There is no in-process owner of such rows at process start. A kill during the undo window sends the photo.)
 2. List `outbox/` files: delete files whose id has no row (includes `*.tmp`). Delete rows (any state) whose file does not exist.
-3. If any `WAITING / QUEUED` row remains: `scheduler.enqueueDefault()`.
+3. If any `WAITING / QUEUED` row remains: `scheduler.triggerNow()` (Q64: resets the backoff at every app start, so a kill during a background send is retried right away; was `enqueueDefault()`).
 4. Then run `promote()` once (PLAN-3) so a `resendPending` item left across a restart can proceed.
 5. Set `recoveryDone = true` (`MutableStateFlow`); `awaitRecovery()` suspends until then.
 - Contract for consumers: `MainViewModel` keeps Loading until `recoveryDone` (photo-send-flow PLAN-1 section 2 "recovery-finished signal"); the outbox worker calls `awaitRecovery()` first (outbox-worker PLAN-1 section 2) so it never sees or resets rows it does not own.

@@ -22,6 +22,11 @@ object Constants {
     const val BATCH_MAX_BYTES = 15L * 1024 * 1024
     const val SEND_LOG_MAX = 50
 
+    // 再送ワーカーの一意ワーク名とタグ(outbox-worker PLAN-2 1)。実行中に再開されたときは後続ワークを使う
+    const val WORK_OUTBOX_SEND = "outbox-send"
+    const val WORK_OUTBOX_SEND_NEXT = "outbox-send-next"
+    const val WORK_TAG_OUTBOX = "outbox"
+
     // 設定画面
     const val LONG_PRESS_MS = 3000L
     const val RECIPIENT_CAP = 6

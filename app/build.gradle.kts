@@ -99,4 +99,6 @@ dependencies {
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.coroutines.test)
+    // WorkManager のテスト用初期化とテストドライバ(再送ワーカーの登録の確認)
+    androidTestImplementation(libs.work.testing)
 }
