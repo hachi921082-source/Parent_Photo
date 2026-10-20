@@ -59,6 +59,7 @@ class MainViewModel(
     private var photo: UiState.Preview? = null
 
     private val failureMessageTimer = DeadlineTimer(viewModelScope, elapsedRealtime)
+    private val outboxFullNoticeTimer = DeadlineTimer(viewModelScope, elapsedRealtime)
 
     init {
         // コールドスタート時は前回の写真を復元しない(ds 2.2, Q46)
@@ -99,6 +100,7 @@ class MainViewModel(
      */
     fun onResume() {
         failureMessageTimer.onResume()
+        outboxFullNoticeTimer.onResume()
         reevaluate()
     }
 
@@ -155,11 +157,14 @@ class MainViewModel(
         setState(precedence())
     }
 
-    /** 送り先ボタン。待機中が5件以上なら受け付けない(ds 2.4 の防御) */
+    /**
+     * 送り先ボタン。待機中が5件以上なら項目を作らず、Preview と写真を残したまま
+     * OutboxFull の案内を 3000 ms 重ねる(ds 2.4 の防御、Q65)。件数が減れば再び押せる。
+     */
     fun onRecipientTapped(@Suppress("UNUSED_PARAMETER") recipientId: String) {
         if (state !is UiState.Preview) return
         if (activeCount >= Constants.ACTIVE_CAP) {
-            // TODO(PLAN-3/Q): 拒否時の案内の出し方(Preview のまま写真を残すか)が未確定
+            showOutboxFullNotice()
             return
         }
         // TODO(PLAN-3): createItem -> setPreviewExists(false) -> CancelWindow(3秒)
@@ -189,6 +194,7 @@ class MainViewModel(
     private fun onCaptured(capturedAt: Long, file: File) {
         val p = UiState.Preview(capturedAt, file)
         photo = p
+        model.update { it.copy(photoFile = file) }
         outbox.setPreviewExists(true)
         setState(p)
     }
@@ -208,8 +214,18 @@ class MainViewModel(
         }
     }
 
+    // createItem が OutboxFullException を投げた時も PLAN-3 からここを呼ぶ
+    private fun showOutboxFullNotice() {
+        model.update { it.copy(outboxFullNoticeVisible = true) }
+        outboxFullNoticeTimer.start(Constants.OUTBOX_FULL_NOTICE_MS) {
+            model.update { it.copy(outboxFullNoticeVisible = false) }
+        }
+    }
+
     private fun discardPhoto() {
         photo = null
+        outboxFullNoticeTimer.cancel()
+        model.update { it.copy(photoFile = null, outboxFullNoticeVisible = false) }
         capturer.deleteFiles()
         outbox.setPreviewExists(false)
     }
