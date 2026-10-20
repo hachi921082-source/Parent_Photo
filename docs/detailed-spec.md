@@ -79,7 +79,7 @@ Single `MainViewModel` holds `UiState`; Compose renders one screen per state. Na
 - Cached preview photo lives at `cache/preview.jpg`; only one exists at a time. Deleted on やり直す, Sent, QueuedNotice.
 - Buttons: during CancelWindow all buttons except 取り消す are disabled; during Sending all buttons are disabled; the settings icon is hidden in Loading, Capturing, CancelWindow, Sending, Sent, QueuedNotice. [ASSUMPTION: icon hidden in those transient states.]
 - System back in Loading, Capturing, Preview, CancelWindow, Sending, Sent, and QueuedNotice is ignored (no accidental discard). Implementation: each of these composables declares `BackHandler(enabled = true) { }` (also covers Android 13+ predictive back; set `android:enableOnBackInvokedCallback` consistently so the empty handler takes effect). Camera, OutboxFull, SetupRequired, PermissionDenied keep the default back behavior (leaves the app). [ASSUMPTION]
-- Background/foreground behavior [CONFIRMED by the user]: the CancelWindow timer and the foreground send run in `viewModelScope` using `SystemClock.elapsedRealtime`; they continue while the app is in the background as long as the process lives. On return the screen shows the current state (e.g., Sending still running, or Camera if Sent/QueuedNotice already elapsed; the Sent/QueuedNotice 2 s timers also run on elapsed time and the vibration/sound is not replayed). If the process is killed, recovery (7.6) sends the photo via the worker.
+- Background/foreground behavior [CONFIRMED by the user]: the CancelWindow timer and the foreground send run in `viewModelScope` using `SystemClock.elapsedRealtime`; they continue while the app is in the background as long as the process lives. On return the screen shows the current state (e.g., Sending still running, or Camera if Sent/QueuedNotice already elapsed; the Sent/QueuedNotice 2 s timers also run on elapsed time and the vibration/sound is not replayed). If the process is killed, recovery (7.6) sends the photo via the worker. If the ViewModel is cleared while the process lives (task swiped from recents) during CancelWindow or Sending, the item is set to QUEUED on the application scope and `triggerNow` is called, so the worker sends it right away (Q69).
 - Zero recipients: Preview shows the text "送り先が登録されていません" in place of recipient buttons; やり直す stays.
 
 ### 2.4 Active count
@@ -228,7 +228,7 @@ Theme: Material3 default light color scheme (static, no dynamic color). Tokens u
 
 ### 7.4 Worker
 - `OutboxWorker` (`CoroutineWorker`) in unique work `outbox-send` (enqueue policy: `KEEP` by default; never `REPLACE` while the work is RUNNING), constraint `NetworkType.CONNECTED`, backoff `BackoffPolicy.EXPONENTIAL` initial 15 min (WorkManager caps the delay at about 5 h).
-- Enqueue when: an item becomes QUEUED after a failed/offline foreground send; settings are saved with SMTP fields (7.5); a test send succeeds; 今すぐ再送 is tapped; app start recovery (7.6) found queued items.
+- Enqueue when: an item becomes QUEUED after a failed/offline foreground send (uses `triggerNow`, resetting any pending backoff, Q68); settings are saved with SMTP fields (7.5); a test send succeeds; 今すぐ再送 is tapped; app start recovery (7.6) found queued items.
 - Run:
   1. Load WAITING items with phase QUEUED; if none, `Result.success()`.
   2. For each item whose `now - retryStartMillis > 24 h` (and not yet sent): set state ATTENTION, reason RETRY_EXPIRED, `attentionSinceMillis = now`; apply 7.8 overflow rule; notify (10.1). Skip them below.
