@@ -48,6 +48,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -86,6 +87,9 @@ fun SettingsRoute(
     val recipientDialog by viewModel.recipientDialog.collectAsState()
     val deleteConfirm by viewModel.deleteConfirm.collectAsState()
     val recipientFocus = rememberRecipientFocusRequesters()
+    val testRecipient by viewModel.testRecipient.collectAsState()
+    val savedSetupValid by viewModel.savedSetupValid.collectAsState()
+    val testSend by viewModel.testSend.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val focusRequesters = remember { FormField.entries.associateWith { FocusRequester() } }
     val bringRequesters = remember { FormField.entries.associateWith { BringIntoViewRequester() } }
@@ -94,6 +98,18 @@ fun SettingsRoute(
     val saveFailedMessage = stringResource(R.string.snackbar_save_failed)
 
     LaunchedEffect(viewModel) { viewModel.onOpened() }
+
+    // 送り先ダイアログが閉じたら画面側のフォーカスも外す。外さないと、ダイアログで入力中に閉じたとき
+    // フォーカスが送信者名の欄に戻り、キーボードが開いてしまう(PLAN-2 の実機確認で見つけた)
+    val screenFocus = LocalFocusManager.current
+    val screenKeyboard = LocalSoftwareKeyboardController.current
+    val dialogOpen = recipientDialog != null
+    LaunchedEffect(dialogOpen) {
+        if (!dialogOpen) {
+            screenFocus.clearFocus(force = true)
+            screenKeyboard?.hide()
+        }
+    }
     LaunchedEffect(viewModel) {
         viewModel.events.collect { e ->
             when (e) {
@@ -157,7 +173,16 @@ fun SettingsRoute(
             }
             SectionHeader(R.string.section_button_size)
             ButtonSizeGroup(selected = buttonSize, onSelect = viewModel::onButtonSizeSelected)
-            // TODO(PLAN-3): テスト送信(送り先の選択・テスト送信ボタン・案内)をここに置く
+            recipients?.let { list ->
+                TestSendSection(
+                    recipients = list,
+                    selected = testRecipient,
+                    hintRes = TestSendLogic.hint(list.size, savedSetupValid, form.dirty),
+                    sending = testSend != TestSendPhase.Idle,
+                    onSelect = viewModel::onTestRecipientSelected,
+                    onSend = viewModel::onTestSend,
+                )
+            }
             Spacer(Modifier.heightIn(min = 8.dp))
             OutlinedButton(onClick = onOpenUnsent, modifier = Modifier.fillMaxWidth()) {
                 Text(stringResource(R.string.link_unsent))
@@ -180,6 +205,12 @@ fun SettingsRoute(
     }
     deleteConfirm?.let { c ->
         DeleteRecipientDialog(state = c, onConfirm = viewModel::onDeleteConfirmed, onDismiss = viewModel::onDeleteDismiss)
+    }
+
+    when (val t = testSend) {
+        TestSendPhase.Idle -> Unit
+        TestSendPhase.Sending -> TestSendProgressDialog()
+        is TestSendPhase.Done -> TestSendResultDialog(t.result, onOk = viewModel::onTestResultOk)
     }
 
     if (dirtyDialog) {
