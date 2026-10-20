@@ -13,10 +13,13 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.onAllNodesWithContentDescription
@@ -36,7 +39,13 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import android.os.SystemClock
+import android.view.MotionEvent
+import com.example.parentphoto.mail.FailureKind
+import com.example.parentphoto.mail.MailCode
+import com.example.parentphoto.mail.MailResult
 import com.example.parentphoto.settings.ButtonSize
+import kotlinx.coroutines.CompletableDeferred
 import com.example.parentphoto.settings.Recipient
 import com.example.parentphoto.settings.Settings
 import com.example.parentphoto.ui.theme.FamilyPhotoTheme
@@ -114,6 +123,14 @@ class SettingsScreenTest {
         override suspend fun onRecipientDeleted(recipientId: String) { deletedCalls += recipientId }
     }
 
+    // テスト送信の偽物。gate を完了させるまで送信中のまま待つ(実メールは送らない)
+    private val sentTo = mutableListOf<String>()
+    @Volatile private var gate = CompletableDeferred<MailResult>()
+    private val sender = TestMailSender { r ->
+        sentTo += r.id
+        gate.await()
+    }
+
     private fun recipients(n: Int) = (1..n).map { Recipient("r$it", "送り先$it", "r$it@example.jp") }
 
     private fun show(settings: Settings = Settings(), passwordSaved: Boolean = false) {
@@ -122,7 +139,7 @@ class SettingsScreenTest {
         val factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T =
-                SettingsViewModel(store, { resumes++ }, store, outbox, Patterns.EMAIL_ADDRESS, {}) as T
+                SettingsViewModel(store, { resumes++ }, store, outbox, sender, Patterns.EMAIL_ADDRESS, {}) as T
         }
         vm = ViewModelProvider(vmStore, factory)[SettingsViewModel::class.java]
         rule.setContent {
@@ -311,7 +328,7 @@ class SettingsScreenTest {
         rule.onNodeWithText("未送信一覧").performScrollTo().performClick()
         rule.onNodeWithText("未送信一覧").assertIsDisplayed()
         rule.onNodeWithContentDescription("戻る").performClick()
-        rule.onNodeWithText("お母さん").assertIsDisplayed()
+        rule.onNodeWithText("お母さん").assertExists()
         rule.onNodeWithText("送信ログ").performScrollTo().performClick()
         rule.waitForIdle()
         rule.onNodeWithText("お母さん").assertDoesNotExist()
@@ -341,6 +358,9 @@ class SettingsScreenTest {
 
     // ---- 送り先(PLAN-2) ----
 
+    private fun inRow(id: String, text: String) =
+        rule.onNode(hasText(text) and hasAnyAncestor(hasTestTag(RecipientTags.row(id))), useUnmergedTree = true)
+
     private fun recipientField(f: RecipientField) = rule.onNodeWithTag(RecipientTags.field(f))
     private fun dialogButton(label: String) = rule.onNode(hasText(label) and hasAnyAncestor(isDialog()))
     private fun dialogSave() = dialogButton("保存").performClick()
@@ -358,8 +378,9 @@ class SettingsScreenTest {
         rule.onNodeWithText("送り先 0/6").assertExists()
         addRecipient("お父さん", "chichi@example.jp")
         rule.onNodeWithText("送り先 1/6").assertExists()
-        rule.onNodeWithText("お父さん").assertExists()
-        rule.onNodeWithText("chichi@example.jp").assertExists()
+        // テスト送信の選択欄にも名前が出るので、一覧の行の中で確かめる
+        inRow("id1", "お父さん").assertExists()
+        inRow("id1", "chichi@example.jp").assertExists()
         (2..6).forEach { addRecipient("送り先$it", "r$it@example.jp") }
         rule.onNodeWithText("送り先 6/6").assertExists()
         rule.onNodeWithTag(RecipientTags.ADD).assertIsNotEnabled()
@@ -466,10 +487,108 @@ class SettingsScreenTest {
         val name = "\uD83D\uDC68\u200D\uD83D\uDC69お父さん"
         val long = "very.long.address.for.testing.ellipsis.${"x".repeat(60)}@example.jp"
         show(Settings(recipients = listOf(Recipient("r1", name, long))))
-        rule.onNodeWithText(name).assertIsDisplayed()
-        val emailBounds = rule.onNodeWithText(long).getUnclippedBoundsInRoot()
-        val nameBounds = rule.onNodeWithText(name).getUnclippedBoundsInRoot()
+        inRow("r1", name).assertIsDisplayed()
+        val emailBounds = inRow("r1", long).getUnclippedBoundsInRoot()
+        val nameBounds = inRow("r1", name).getUnclippedBoundsInRoot()
         // 長いアドレスも1行(名前の行と同程度の高さ)
         assertTrue(emailBounds.height < nameBounds.height * 1.5f)
+    }
+
+    // ---- テスト送信(PLAN-3) ----
+
+    private val validSettings = Settings(smtpUser = "chichi@example.jp", recipients = (1..3).map {
+        Recipient("r$it", "送り先$it", "r$it@example.jp")
+    })
+
+    private fun hint() = rule.onNodeWithTag(TestSendTags.HINT)
+    private fun testButton() = rule.onNodeWithTag(TestSendTags.BUTTON)
+
+    // 画面の左上(ダイアログの外)を指で叩く
+    private fun tapOutside() {
+        val t = SystemClock.uptimeMillis()
+        val ui = InstrumentationRegistry.getInstrumentation().uiAutomation
+        ui.injectInputEvent(MotionEvent.obtain(t, t, MotionEvent.ACTION_DOWN, 5f, 300f, 0), true)
+        ui.injectInputEvent(MotionEvent.obtain(t, t + 50, MotionEvent.ACTION_UP, 5f, 300f, 0), true)
+        rule.waitForIdle()
+    }
+
+    @Test fun hintPriorityAndButtonState() {
+        // 送り先なし(保存済み設定も不正、未保存の変更もあり)は 1 番目の案内
+        show()
+        type(FormField.SENDER_NAME, "父")
+        testButton().performScrollTo().assertIsNotEnabled()
+        hint().assertTextEquals("送り先を登録してください")
+        // 送り先を足すと 2 番目(保存済み設定が不正)
+        addRecipient("母", "haha@example.jp")
+        hint().performScrollTo().assertTextEquals("先にメール設定を保存してください")
+    }
+
+    @Test fun hintDirtyThenEnabled() {
+        show(validSettings, passwordSaved = true)
+        testButton().performScrollTo().assertIsEnabled()
+        hint().assertDoesNotExist()
+        type(FormField.SENDER_NAME, "父")
+        testButton().performScrollTo().assertIsNotEnabled()
+        hint().assertTextEquals("先に保存してください")
+    }
+
+    @Test fun dropdownSelectionFallsBackAfterDelete() {
+        show(validSettings, passwordSaved = true)
+        rule.onNodeWithTag(TestSendTags.DROPDOWN).performScrollTo().assertTextContains("送り先1")
+        rule.onNodeWithTag(TestSendTags.DROPDOWN).performClick()
+        rule.onNodeWithTag(TestSendTags.option("r3")).performClick()
+        rule.onNodeWithTag(TestSendTags.DROPDOWN).assertTextContains("送り先3")
+        rule.onAllNodesWithContentDescription("削除")[2].performScrollTo().performClick()
+        dialogButton("削除").performClick()
+        rule.waitUntil(5_000) { store.flow.value.recipients.size == 2 }
+        rule.onNodeWithTag(TestSendTags.DROPDOWN).assertTextContains("送り先1")
+        testButton().performScrollTo().performClick()
+        rule.waitUntil(5_000) { sentTo.isNotEmpty() }
+        assertEquals(listOf("r1"), sentTo)
+        gate.complete(MailResult.Success)
+    }
+
+    @Test fun progressDialogBlocksBackAndOutsideThenResultOnlyClosesByOk() {
+        show(validSettings, passwordSaved = true)
+        testButton().performScrollTo().performClick()
+        rule.onNodeWithText("送信中...").assertIsDisplayed()
+        rule.onNodeWithContentDescription("処理中").assertExists()
+        systemBack()
+        tapOutside()
+        rule.onNodeWithText("送信中...").assertIsDisplayed()
+        assertEquals(0, closes)
+
+        gate.complete(MailResult.Success)
+        rule.waitUntil(5_000) { rule.onAllNodesWithText("送信できました").fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithText("送信中...").assertDoesNotExist()
+        rule.waitUntil(5_000) { resumes == 1 }
+        systemBack()
+        tapOutside()
+        rule.onNodeWithText("送信できました").assertIsDisplayed()
+        assertEquals(0, closes)
+        dialogButton("OK").performClick()
+        rule.onNodeWithText("送信できました").assertDoesNotExist()
+        testButton().assertIsEnabled()
+    }
+
+    @Test fun failureTexts() {
+        show(validSettings, passwordSaved = true)
+        val cases = listOf(
+            MailCode.AUTH to "ログインできませんでした。送信元アドレスとアプリパスワードを確認してください",
+            MailCode.TIMEOUT to "ネットワークに接続できませんでした",
+            MailCode.NETWORK to "ネットワークに接続できませんでした",
+            MailCode.REJECTED to "宛先アドレスが受け付けられませんでした",
+            MailCode.OTHER to "送信に失敗しました（OTHER）",
+        )
+        cases.forEach { (code, text) ->
+            gate = CompletableDeferred()
+            testButton().performScrollTo().performClick()
+            rule.waitForIdle()
+            gate.complete(MailResult.Failure(FailureKind.PERMANENT, code, null, null, null))
+            rule.waitUntil(5_000) { rule.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty() }
+            dialogButton("OK").performClick()
+            rule.waitForIdle()
+        }
+        assertEquals(0, resumes)
     }
 }
