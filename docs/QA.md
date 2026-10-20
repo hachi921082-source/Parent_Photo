@@ -437,3 +437,10 @@ Background: a self-review found places where the implementer would have had to c
 ### Q69. Task swiped away during the undo window or a foreground send (process alive) [RESOLVED]
 - Context: ViewModel cleared, flow coroutines cancelled, item stuck in CANCEL_WINDOW/SENDING_FG until next cold start.
 - Answer: treat like a kill (ds 7.6): on the application scope set the item to QUEUED and call `triggerNow`, so the worker sends it right away. A swipe during the undo window still sends the photo. CONFIRMED by the user.
+
+### Q70. Settings screen details left open by ds 9 (settings-screen PLAN-1) [RESOLVED]
+- Back arrow content description: "戻る".
+- Field errors: an error clears when that field is edited; full validation re-runs on the next 保存.
+- Save failure (DataStore/Keystore exception): input is kept and a Snackbar "保存できませんでした" (Material3 `SnackbarDuration.Short`, no action) is shown; this extends Q57's Snackbar list by one.
+- Visuals accepted as built: 保存 full-width filled button; 未送信一覧 / 送信ログ full-width outlined buttons; 変更 / キャンセル text buttons right of the password field; dirty-form dialog without title; paste over the length limit keeps the first N characters.
+- CONFIRMED by the user.
