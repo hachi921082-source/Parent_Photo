@@ -30,6 +30,8 @@
     <string name="capture_failure">撮影できませんでした。もう一度お試しください</string>
     <!-- 設定画面の Snackbar(ds 3.1。settings-screen で使う) -->
     <string name="snackbar_saved">保存しました</string>
+    <!-- 保存で DataStore・Keystore の例外が起きたとき(Q70) -->
+    <string name="snackbar_save_failed">保存できませんでした</string>
     <string name="snackbar_waiting">順番待ちです。しばらくお待ちください</string>
     <!-- 隠し設定画面(ds 9.1、settings-screen PLAN-1) -->
     <string name="settings_title">設定</string>
