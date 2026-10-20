@@ -101,4 +101,8 @@ dependencies {
     androidTestImplementation(libs.coroutines.test)
     // WorkManager のテスト用初期化とテストドライバ(再送ワーカーの登録の確認)
     androidTestImplementation(libs.work.testing)
+    // 父親向け画面の Compose UI テスト(photo-send-flow PLAN-2 5)
+    androidTestImplementation(platform(libs.compose.bom))
+    androidTestImplementation(libs.compose.ui.test.junit4)
+    debugImplementation(libs.compose.ui.test.manifest)
 }
