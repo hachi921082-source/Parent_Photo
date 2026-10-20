@@ -425,3 +425,15 @@ Background: a self-review found places where the implementer would have had to c
 
 ### Q66. Background while the camera permission dialog is shown [RESOLVED]
 - Answer: blank Loading screen behind the system dialog (no camera frame). CONFIRMED by the user.
+
+### Q67. Father-facing message when createItem fails for a non-full reason [RESOLVED]
+- Context: e.g. disk full while copying the photo into the outbox (very rare).
+- Answer: no message. Preview and the photo stay; tapping the recipient again retries. Logcat only. CONFIRMED by the user.
+
+### Q68. Foreground failure while a worker backoff is pending [RESOLVED]
+- Context: `enqueueDefault` (KEEP) kept the existing ~15 min+ backoff, so a new failed photo waited even after the network returned.
+- Answer: a failed/offline foreground send calls `triggerNow` (REPLACE if not RUNNING, else follow-up), resetting the backoff, same idea as Q64. CONFIRMED by the user.
+
+### Q69. Task swiped away during the undo window or a foreground send (process alive) [RESOLVED]
+- Context: ViewModel cleared, flow coroutines cancelled, item stuck in CANCEL_WINDOW/SENDING_FG until next cold start.
+- Answer: treat like a kill (ds 7.6): on the application scope set the item to QUEUED and call `triggerNow`, so the worker sends it right away. A swipe during the undo window still sends the photo. CONFIRMED by the user.
