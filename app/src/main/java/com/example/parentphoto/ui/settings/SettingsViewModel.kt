@@ -4,7 +4,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.parentphoto.settings.ButtonSize
 import com.example.parentphoto.settings.Recipient
+import com.example.parentphoto.mail.FailureKind
+import com.example.parentphoto.mail.MailCode
+import com.example.parentphoto.mail.MailResult
 import com.example.parentphoto.settings.Settings
+import com.example.parentphoto.settings.SetupState
 import com.example.parentphoto.settings.Validators
 import com.example.parentphoto.util.Constants
 import kotlinx.coroutines.CancellationException
@@ -16,6 +20,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -58,7 +63,7 @@ sealed interface SettingsEvent {
 }
 
 /**
- * 隠し設定画面の ViewModel(settings-screen PLAN-1、送り先は PLAN-2)。
+ * 隠し設定画面の ViewModel(settings-screen PLAN-1、送り先は PLAN-2、テスト送信は PLAN-3)。
  * Activity 単位で1つ持ち、副画面への移動や画面の作り直しをまたいで未保存の入力を保つ。
  * 設定を閉じたら onClosed で入力を捨て、次に開いたとき onOpened で保存済みの値から読み直す。
  * パスワードの平文・メールアドレスはログに出さない。
@@ -68,6 +73,7 @@ class SettingsViewModel(
     private val resumer: SetupResumer,
     private val recipientStore: RecipientStore,
     private val recipientOutbox: RecipientOutbox,
+    private val testSender: TestMailSender,
     private val emailPattern: Pattern,
     private val log: (String) -> Unit,
 ) : ViewModel() {
@@ -92,6 +98,23 @@ class SettingsViewModel(
     private val _deleteConfirm = MutableStateFlow<DeleteConfirmState?>(null)
     /** 送り先削除の確認ダイアログ。null なら閉じている。 */
     val deleteConfirm: StateFlow<DeleteConfirmState?> = _deleteConfirm.asStateFlow()
+
+    // テスト送信の送り先の選択。画面だけの一時的な状態で保存しない(ds 9.5)
+    private val selectedTestId = MutableStateFlow<String?>(null)
+
+    /** テスト送信の送り先。未選択・削除済みなら残っている先頭(ds 9.5)。 */
+    val testRecipient: StateFlow<Recipient?> = combine(recipients, selectedTestId) { list, id ->
+        list?.let { TestSendLogic.selected(it, id) }
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    /** 保存済みのメール設定が使えるか(ds 8.3 の SetupRequired でない)。読み込み前は false。 */
+    val savedSetupValid: StateFlow<Boolean> = store.settings
+        .map { s -> !SetupState.isSetupRequired(s, store.isPasswordSaved(), emailPattern) }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    private val _testSend = MutableStateFlow<TestSendPhase>(TestSendPhase.Idle)
+    /** テスト送信の進行ダイアログ・結果ダイアログ。 */
+    val testSend: StateFlow<TestSendPhase> = _testSend.asStateFlow()
 
     private var recipientSaving = false
     private var deleteCounting = false
@@ -127,6 +150,9 @@ class SettingsViewModel(
         _form.value = SmtpFormState()
         _recipientDialog.value = null
         _deleteConfirm.value = null
+        selectedTestId.value = null
+        // 送信中のテストは止めない(結果は送信ログに残る)。画面の状態だけ戻す
+        _testSend.value = TestSendPhase.Idle
         while (_events.tryReceive().isSuccess) Unit
     }
 
@@ -347,6 +373,51 @@ class SettingsViewModel(
                 }
             }
         }
+    }
+
+    // ---- テスト送信(PLAN-3) ----
+
+    fun onTestRecipientSelected(r: Recipient) {
+        selectedTestId.value = r.id
+    }
+
+    /**
+     * 「テスト送信」(ds 9.5)。案内が出ている(押せない)ときと送信中は何もしない。
+     * 保存済みの設定で文面だけのテストメールを送り、結果ダイアログを出す。成功なら要確認の再開も行う(ds 7.5)。
+     */
+    fun onTestSend() {
+        if (_testSend.value != TestSendPhase.Idle) return
+        val list = recipients.value ?: return
+        if (TestSendLogic.hint(list.size, savedSetupValid.value, _form.value.dirty) != null) return
+        val r = testRecipient.value ?: return
+        _testSend.value = TestSendPhase.Sending
+        val mySession = session
+        viewModelScope.launch {
+            val result = try {
+                testSender.sendTest(r)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // sendTest は失敗を結果で返すが、想定外の例外もその他として扱う
+                log("sendTest failed: ${e.javaClass.simpleName}")
+                MailResult.Failure(FailureKind.TRANSIENT, MailCode.OTHER, e.javaClass.name, null, null)
+            }
+            if (mySession == session) _testSend.value = TestSendPhase.Done(TestSendLogic.resultOf(result))
+            if (result == MailResult.Success) {
+                try {
+                    resumer.resumeAfterSetupFix()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    log("resumeAfterSetupFix failed: ${e.javaClass.simpleName}")
+                }
+            }
+        }
+    }
+
+    /** 結果ダイアログの「OK」。外側タップ・戻るでは閉じない。 */
+    fun onTestResultOk() {
+        if (_testSend.value is TestSendPhase.Done) _testSend.value = TestSendPhase.Idle
     }
 
     // 入力を反映し、その欄のエラー表示を消す(次の保存で検証し直す)
