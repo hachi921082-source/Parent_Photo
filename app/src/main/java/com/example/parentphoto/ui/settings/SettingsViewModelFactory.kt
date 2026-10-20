@@ -28,6 +28,8 @@ class SettingsViewModelFactory(private val app: ParentPhotoApp) : ViewModelProvi
             resumer = SetupResumer { outbox.resumeAfterSetupFix() },
             recipientStore = store,
             recipientOutbox = RepositoryRecipientOutbox(outbox),
+            // 設定の読み出しとパスワードの復号を含むので IO で行う(60秒の上限と送信ログは SmtpSender 側)
+            testSender = TestMailSender { r -> withContext(Dispatchers.IO) { app.smtpSender.sendTest(r) } },
             emailPattern = Patterns.EMAIL_ADDRESS,
             log = { Log.w(TAG_SETTINGS, it) },
         )
