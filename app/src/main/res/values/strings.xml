@@ -35,6 +35,16 @@
     <string name="snackbar_waiting">順番待ちです。しばらくお待ちください</string>
     <!-- 隠し設定画面(ds 9.1、settings-screen PLAN-1) -->
     <string name="settings_title">設定</string>
+    <!-- 送り先(ds 9.1 1、settings-screen PLAN-2) -->
+    <string name="section_recipients">送り先 %1$d/%2$d</string>
+    <string name="button_add_recipient">追加</string>
+    <string name="dialog_add_recipient">送り先を追加</string>
+    <string name="dialog_edit_recipient">送り先を編集</string>
+    <string name="label_recipient_name">表示名</string>
+    <string name="label_recipient_email">メールアドレス</string>
+    <string name="confirm_delete_recipient">この宛先を削除しますか？</string>
+    <string name="confirm_delete_recipient_queued">この宛先を削除しますか？ 送れていない写真が%1$d枚あります。削除すると、その写真は送られなくなります（未送信一覧に残ります）。</string>
+    <string name="button_delete">削除</string>
     <string name="section_sender_name">送信者名</string>
     <string name="label_sender_name">送信者名（例: お父さん）</string>
     <string name="section_mail">メール設定</string>
@@ -65,4 +75,6 @@
     <string name="cd_hide_password">パスワードを隠す</string>
     <!-- 設定画面のアプリバーの戻る矢印(ds 9.9 に記載なし、PLAN-1 実装メモ) -->
     <string name="cd_back">戻る</string>
+    <string name="cd_edit">編集</string>
+    <string name="cd_delete">削除</string>
 </resources>
