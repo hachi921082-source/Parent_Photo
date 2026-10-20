@@ -82,6 +82,10 @@ fun SettingsRoute(
 ) {
     val form by viewModel.form.collectAsState()
     val buttonSize by viewModel.buttonSize.collectAsState()
+    val recipients by viewModel.recipients.collectAsState()
+    val recipientDialog by viewModel.recipientDialog.collectAsState()
+    val deleteConfirm by viewModel.deleteConfirm.collectAsState()
+    val recipientFocus = rememberRecipientFocusRequesters()
     val snackbarHostState = remember { SnackbarHostState() }
     val focusRequesters = remember { FormField.entries.associateWith { FocusRequester() } }
     val bringRequesters = remember { FormField.entries.associateWith { BringIntoViewRequester() } }
@@ -100,6 +104,8 @@ fun SettingsRoute(
                 SettingsEvent.SaveFailed -> launch {
                     snackbarHostState.showSnackbar(saveFailedMessage, duration = SnackbarDuration.Short)
                 }
+                // ダイアログの欄は画面内に収まるのでフォーカスだけ移す
+                is SettingsEvent.FocusRecipientField -> recipientFocus.getValue(e.field).requestFocus()
                 is SettingsEvent.FocusField -> {
                     bringRequesters.getValue(e.field).bringIntoView()
                     focusRequesters.getValue(e.field).requestFocus()
@@ -133,7 +139,14 @@ fun SettingsRoute(
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            // TODO(PLAN-2): 送り先(一覧・追加・編集・削除)をここに置く
+            recipients?.let { list ->
+                RecipientsSection(
+                    recipients = list,
+                    onAdd = viewModel::onAddRecipient,
+                    onEdit = viewModel::onEditRecipient,
+                    onDelete = viewModel::onDeleteRecipient,
+                )
+            }
             if (form.loaded) {
                 SmtpFormSection(
                     form = form,
@@ -153,6 +166,20 @@ fun SettingsRoute(
                 Text(stringResource(R.string.link_send_log))
             }
         }
+    }
+
+    recipientDialog?.let { d ->
+        RecipientDialog(
+            state = d,
+            focusRequesters = recipientFocus,
+            onNameChange = viewModel::onRecipientNameChange,
+            onEmailChange = viewModel::onRecipientEmailChange,
+            onSave = viewModel::onRecipientDialogSave,
+            onDismiss = viewModel::onRecipientDialogDismiss,
+        )
+    }
+    deleteConfirm?.let { c ->
+        DeleteRecipientDialog(state = c, onConfirm = viewModel::onDeleteConfirmed, onDismiss = viewModel::onDeleteDismiss)
     }
 
     if (dirtyDialog) {
