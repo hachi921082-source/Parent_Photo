@@ -2,7 +2,13 @@ package com.example.parentphoto.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.parentphoto.mail.FailureKind
+import com.example.parentphoto.mail.ItemId
+import com.example.parentphoto.mail.MailCode
+import com.example.parentphoto.mail.MailResult
 import com.example.parentphoto.notify.NotificationPermissionRequester
+import com.example.parentphoto.notify.SuccessFeedback
+import com.example.parentphoto.outbox.OutboxFullException
 import com.example.parentphoto.util.Constants
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -13,13 +19,15 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 
 /**
  * 父親向け画面の状態機械(ds 2、photo-send-flow PLAN-1)。
  * 優先順位(ds 2.2)の評価、撮影・やり直す・設定の出入り、撮影失敗メッセージのタイマー、
  * プレビュー中の待機枠予約(ds 2.4)を受け持つ。すべて viewModelScope(メインスレッド)で動く。
- * 取り消し猶予・前面送信・送信後の画面は PLAN-3 で足す。
+ * 送り先タップ後は 取り消し猶予(3秒)→ 前面送信(最大60秒)→「送りました！」/「あとで送ります」(各2秒)
+ * → Camera(または OutboxFull)と進む(ds 2.3、PLAN-3)。タイマーと送信はバックグラウンドでも続く。
  */
 class MainViewModel(
     private val settingsSource: SendFlowSettings,
@@ -34,6 +42,10 @@ class MainViewModel(
     private val wallClock: () -> Long,
     // 撮影失敗を Logcat(ParentPhoto/Camera)に残す
     private val cameraLog: (String) -> Unit,
+    // 送信成功の振動と音(ds 10.2)
+    private val feedback: SuccessFeedback = SuccessFeedback {},
+    // 送信の流れの異常を Logcat に残す(項目idのみ)
+    private val flowLog: (String) -> Unit = {},
 ) : ViewModel() {
 
     private val model = MutableStateFlow(MainUiModel())
@@ -60,6 +72,16 @@ class MainViewModel(
 
     private val failureMessageTimer = DeadlineTimer(viewModelScope, elapsedRealtime)
     private val outboxFullNoticeTimer = DeadlineTimer(viewModelScope, elapsedRealtime)
+
+    // Sent / QueuedNotice の2秒
+    private val resultScreenTimer = DeadlineTimer(viewModelScope, elapsedRealtime)
+
+    // 取り消し猶予の期限(elapsedRealtime)と、秒数の表示を進めるジョブ
+    private var undoDeadline = 0L
+    private var undoJob: Job? = null
+
+    // createItem の完了待ち。この間は Preview の操作を受け付けない(二度押しで2通作らない)
+    private var creatingItem = false
 
     init {
         // コールドスタート時は前回の写真を復元しない(ds 2.2, Q46)
@@ -101,6 +123,9 @@ class MainViewModel(
     fun onResume() {
         failureMessageTimer.onResume()
         outboxFullNoticeTimer.onResume()
+        resultScreenTimer.onResume()
+        // スリープで delay が止まっていた場合に備え、残り時間を時計から計算し直す
+        (state as? UiState.CancelWindow)?.let { runUndoCountdown(it.itemId) }
         reevaluate()
     }
 
@@ -152,7 +177,7 @@ class MainViewModel(
 
     /** やり直す: 写真を消して Camera(または OutboxFull)へ */
     fun onRetake() {
-        if (state !is UiState.Preview) return
+        if (state !is UiState.Preview || creatingItem) return
         discardPhoto()
         setState(precedence())
     }
@@ -161,13 +186,59 @@ class MainViewModel(
      * 送り先ボタン。待機中が5件以上なら項目を作らず、Preview と写真を残したまま
      * OutboxFull の案内を 3000 ms 重ねる(ds 2.4 の防御、Q65)。件数が減れば再び押せる。
      */
-    fun onRecipientTapped(@Suppress("UNUSED_PARAMETER") recipientId: String) {
-        if (state !is UiState.Preview) return
+    fun onRecipientTapped(recipientId: String) {
+        val p = state as? UiState.Preview ?: return
+        if (creatingItem) return
         if (activeCount >= Constants.ACTIVE_CAP) {
             showOutboxFullNotice()
             return
         }
-        // TODO(PLAN-3): createItem -> setPreviewExists(false) -> CancelWindow(3秒)
+        creatingItem = true
+        viewModelScope.launch {
+            val itemId = try {
+                outbox.createItem(recipientId, p.capturedAtMillis, p.file)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: OutboxFullException) {
+                // 画面側の確認をすり抜けた満杯(Q65)。写真は残す
+                showOutboxFullNotice()
+                null
+            } catch (e: Exception) {
+                // 写真のコピー失敗など。Preview のまま写真を残し、もう一度押せるようにする
+                flowLog("createItem failed: ${e.javaClass.simpleName}")
+                null
+            } finally {
+                creatingItem = false
+            }
+            if (itemId == null) return@launch
+            // 項目そのものが枠を持つので、プレビューの予約を外す(outbox-queue PLAN-1 4)
+            outbox.setPreviewExists(false)
+            outboxFullNoticeTimer.cancel()
+            model.update { it.copy(outboxFullNoticeVisible = false) }
+            undoDeadline = elapsedRealtime() + Constants.UNDO_SECONDS * 1000L
+            setState(UiState.CancelWindow(itemId, Constants.UNDO_SECONDS))
+            runUndoCountdown(itemId)
+        }
+    }
+
+    /** 取り消す: 項目を消して同じ写真の Preview に戻る(cache の写真は残す) */
+    fun onCancelUndo() {
+        val s = state as? UiState.CancelWindow ?: return
+        undoJob?.cancel()
+        undoJob = null
+        // 取り消しで空いた枠を繰り上げに取られないよう、先に予約を戻す(outbox-queue PLAN-1 4)
+        outbox.setPreviewExists(true)
+        setState(photo ?: precedence())
+        viewModelScope.launch {
+            try {
+                outbox.deleteItem(s.itemId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // 消せなかった行は次回起動の復旧で送られる(取り消しの取りこぼしは受け入れる)
+                flowLog("deleteItem failed id=${s.itemId}: ${e.javaClass.simpleName}")
+            }
+        }
     }
 
     /** 設定アイコンの3秒長押し。許された状態からだけ設定ルートを開く */
@@ -182,6 +253,68 @@ class MainViewModel(
         model.update { it.copy(settingsOpen = false) }
         val s = state
         if (s.isPrecedenceOwned || s is UiState.Preview) setState(precedence())
+    }
+
+    // 3, 2, 1 と表示し、期限で前面送信に進む。期限は elapsedRealtime なので再開時に呼び直してよい
+    private fun runUndoCountdown(itemId: ItemId) {
+        undoJob?.cancel()
+        undoJob = viewModelScope.launch {
+            while (true) {
+                val remaining = undoDeadline - elapsedRealtime()
+                if (remaining <= 0) break
+                val seconds = ((remaining + 999) / 1000).toInt()
+                setState(UiState.CancelWindow(itemId, seconds))
+                // 次の秒の境目まで待つ
+                delay(remaining - (seconds - 1) * 1000L)
+            }
+            undoJob = null
+            startForegroundSend(itemId)
+        }
+    }
+
+    private fun startForegroundSend(itemId: ItemId) {
+        if ((state as? UiState.CancelWindow)?.itemId != itemId) return
+        setState(UiState.Sending(itemId))
+        viewModelScope.launch {
+            guarded("setPhase") { outbox.startForegroundSend(itemId) }
+            val result = try {
+                withTimeoutOrNull(Constants.FG_SEND_TIMEOUT_MS) { outbox.sendForeground(itemId) }
+                    ?: MailResult.Failure(FailureKind.TRANSIENT, MailCode.TIMEOUT, null, "foreground cap", null)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                MailResult.Failure(FailureKind.TRANSIENT, MailCode.OTHER, e.javaClass.name, null, null)
+            }
+            if (result == MailResult.Success) {
+                guarded("markSent") { outbox.markSent(itemId) }
+                setState(UiState.Sent)
+                // 「送りました！」に入った時に1回だけ。再開時には鳴らし直さない
+                runCatching { feedback.play() }
+                resultScreenTimer.start(Constants.SENT_SCREEN_MS) { finishSendFlow() }
+            } else {
+                guarded("markQueued") { outbox.markQueued(itemId, result) }
+                setState(UiState.QueuedNotice)
+                resultScreenTimer.start(Constants.QUEUED_NOTICE_MS) { finishSendFlow() }
+            }
+        }
+    }
+
+    // Sent / QueuedNotice の2秒後: cache の写真を消して Camera(または OutboxFull)へ
+    private fun finishSendFlow() {
+        if (state != UiState.Sent && state != UiState.QueuedNotice) return
+        discardPhoto()
+        setState(precedence())
+    }
+
+    // 未送信キューの書き込み失敗で流れを止めない(行は次回起動の復旧で送られる)
+    private suspend fun guarded(what: String, block: suspend () -> Unit) {
+        try {
+            block()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            flowLog("$what failed: ${e.javaClass.simpleName}")
+        }
     }
 
     override fun onCleared() {
@@ -214,7 +347,7 @@ class MainViewModel(
         }
     }
 
-    // createItem が OutboxFullException を投げた時も PLAN-3 からここを呼ぶ
+    // 満杯の拒否(画面側の確認、または createItem の OutboxFullException)
     private fun showOutboxFullNotice() {
         model.update { it.copy(outboxFullNoticeVisible = true) }
         outboxFullNoticeTimer.start(Constants.OUTBOX_FULL_NOTICE_MS) {
