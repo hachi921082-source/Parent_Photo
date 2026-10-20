@@ -1,6 +1,6 @@
 # Session Handoff
 
-Resume point for a fresh conversation. Updated 2026-10-20.
+Resume point for a fresh conversation. Updated 2026-10-21.
 
 ## Index
 1. Status
@@ -11,7 +11,7 @@ Resume point for a fresh conversation. Updated 2026-10-20.
 6. Working Notes
 
 ## 1. Status
-- Phase: implementation in progress. 8 of 10 features DONE and merged to `main` (`docs/plans/README.md` Status column).
+- Phase: implementation in progress. 9 of 10 features DONE and merged to `main` (`docs/plans/README.md` Status column).
 
 | Feature | State | Notes |
 |---|---|---|
@@ -23,12 +23,12 @@ Resume point for a fresh conversation. Updated 2026-10-20.
 | outbox-queue | done | `AttentionAlerter` interface extracted from `AttentionNotifier` (test seam); `ParentPhotoApp` builds `settingsRepository`/`outboxRepository` lazily, `appScope` (SupervisorJob + logging handler) runs observers and startup recovery; `createItem` awaits recovery; androidTest 73/73 x3 |
 | outbox-worker | done | `OutboxRunner` holds the run algorithm (`OutboxWorker` is thin; non-cancel exceptions -> `Result.retry()`); process `Mutex` prevents overlapping runs; `OutboxScheduler` (KEEP default; triggerNow REPLACE unless RUNNING, else `outbox-send-next`); `ParentPhotoApp` adds lazy `smtpSender` and `workScheduler`; startup recovery uses `triggerNow` when QUEUED rows exist (Q64); JVM 87/87, androidTest 82/82 x3 |
 | photo-send-flow | done | ports in `ui/MainPorts.kt` over real repos (`MainViewModelFactory`); timers on `elapsedRealtime` (`DeadlineTimer`), re-checked in `onResume`; father text `lineHeight = 1.3.em` (agent choice to stop 2-line overlap; user may override); Q65 notice overlay 3000 ms; foreground failure -> `triggerNow` (Q68); `onCleared` during CancelWindow/Sending -> `requeueAbandoned` + `triggerNow` (Q69); JVM 139/139, androidTest 107/107 x3 |
-| settings-screen | next | |
-| acceptance-verification | not started | |
+| settings-screen | done | Activity-scoped `SettingsViewModel` (`onOpened`/`onClosed` reset); navigation-compose nested graph (`settings`, `settings/unsent`, `settings/log`); `MainViewModel` no longer evaluates precedence while settings are open; Q70-Q73; JVM 188, androidTest 141 x3 |
+| acceptance-verification | next | |
 
 - Agent set: lite (`designer-lite`, `developer-lite`, `reviewer-lite`). Declared in `CLAUDE.md`.
 - Git: local repo on `main`, no remote, nothing pushed. Clean working tree.
-- `docs/QA.md`: Q1-Q69 all resolved. Q1, Q2, Q8, Q10 are obsolete (GAS dropped).
+- `docs/QA.md`: Q1-Q73 all resolved (Q73 = look/wording adopted without per-item confirmation). Q1, Q2, Q8, Q10 are obsolete (GAS dropped).
 
 ## 2. Where Things Are
 - `CLAUDE.md`: app summary, agent set, status line.
@@ -48,7 +48,7 @@ Resume point for a fresh conversation. Updated 2026-10-20.
 
 ## 4. Open Items
 Carry-overs that later features MUST handle (check them in the named feature's review):
-- settings-screen: call `resumeAfterSetupFix()` after SMTP save success and test-send success; show Snackbar "順番待ちです。しばらくお待ちください" when `resendNow` returns `Waiting`; call `onRecipientDeleted` after `SettingsRepository.deleteRecipient`; put the settings UI at `TODO(settings-screen)` in `ui/MainScreen.kt` (back/close calls `vm.onSettingsClosed()`); outbox-worker PLAN-2 section 5 device checks 3 (wrong password -> fix and save) and 4 (rapid 今すぐ再送 taps).
+- Settings-screen leftovers for acceptance-verification: outbox-worker PLAN-2 section 5 check 3 remainder (real server rejects wrong password -> 要確認 + notification -> fix and save -> mail arrives); test-send success path and AUTH/REJECTED wording with a real server; focus issue on real device (Android 16): after sender-name entry + 保存, or password 変更 -> キャンセル/保存, focus may jump to the sender-name field and open the keyboard (reproduced on API 26 only; if it reproduces, needs a dedicated focus design); Snackbar "順番待ちです" needs 5 active items; Japanese/emoji names typed on a real keyboard.
 - Real-device manual checks (acceptance-verification): CameraX bind failure (not reproducible on emulator); Q69 swipe from recents with process alive -> worker attempts at once; real foreground success: "送りました！", 300 ms vibration + tone, vibration only in silent/vibrate; check 1 photo arrives and badge clears; readability of father screens. (Permission deny / never-ask-again and landscape capture already passed on emulator.)
 - Manual checks on an API 33+ device (only API 26 AVD exists; M06 is Android 16):
   - notification permission dialog appears once only, and not again after deny + restart;
@@ -71,7 +71,7 @@ Other open items:
 - Known minor: name length check counts UTF-16 units (emoji = 2); unused mailcap `pickFirsts` in packaging (harmless).
 
 ## 5. Next Step
-1. Implement settings-screen (`docs/plans/settings-screen/`, 4 sub-plans; pattern that worked for outbox-queue/outbox-worker: one developer-lite agent continued via SendMessage per sub-plan, then one reviewer-lite pass over the whole feature, fixes sent back to the same developer agent). Remaining order: settings-screen -> acceptance-verification. Strictly sequential, one feature at a time, no parallel worktrees (user decision).
+1. Implement acceptance-verification (`docs/plans/acceptance-verification/PLAN.md`; runs the ds 12 checklist and the release build check; needs real device M06 (serial M06-SERIAL, Android 16, USB debugging approval) and the user's Gmail app password in the git-ignored `spike.local.properties`; ask the user to prepare both before starting; real mail is allowed only there). New working rule (user approved 2026-10-21): ask the user right away only about behavior gaps and rare error paths; build look/wording as recommended, record in Implementation notes, and list them at the end of the feature. Order: acceptance-verification is the last feature. Strictly sequential, no parallel worktrees (user decision).
 2. Per feature, follow this cycle (dev-workflow section 7):
    1. `git checkout -b feature/<name>`.
    2. developer-lite implements.
