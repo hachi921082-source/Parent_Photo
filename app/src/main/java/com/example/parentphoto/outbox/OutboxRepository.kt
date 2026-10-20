@@ -266,6 +266,17 @@ class OutboxRepository(
         }
     }
 
+    /**
+     * 画面が閉じられて(タスクを払いのけられて)前面の流れが止まった項目を送信待ちにし、すぐ再送させる(Q69)。
+     * 強制終了時の復旧(ds 7.6)と同じ扱いで、送信ログは書かない。
+     * 送信成功で消えた・すでに送信待ち・要確認の行は何もしない(送信の終わりと競合しても二重に動かさない)。
+     */
+    suspend fun requeueAbandoned(itemId: ItemId) = withContext(ioDispatcher) {
+        val n = dao.requeueForeground(itemId)
+        OutboxLog.d("requeueAbandoned id=$itemId updated=$n")
+        if (n > 0) scheduler.triggerNow()
+    }
+
     private suspend fun queueForRetry(row: OutboxItemEntity, log: SendLogResult, code: String?) {
         val n = dao.updatePhase(row.id, Phase.QUEUED)
         if (n == 0) {
@@ -273,7 +284,8 @@ class OutboxRepository(
             return
         }
         record(log, nameOf(row.recipientId), code)
-        scheduler.enqueueDefault()
+        // 再送待ちの間隔(バックオフ)が残っていても解いてすぐ動かす(Q68)
+        scheduler.triggerNow()
         OutboxLog.d("queued id=${row.id} log=$log code=$code")
     }
 
