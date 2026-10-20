@@ -59,7 +59,7 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                MainScreen(model, viewModel)
+                MainScreen(model, viewModel, (application as ParentPhotoApp).cameraController)
             }
         }
     }
