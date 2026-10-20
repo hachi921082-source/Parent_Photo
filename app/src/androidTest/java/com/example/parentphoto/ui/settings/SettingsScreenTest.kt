@@ -15,6 +15,11 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isDialog
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -32,6 +37,7 @@ import androidx.lifecycle.ViewModelStore
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.example.parentphoto.settings.ButtonSize
+import com.example.parentphoto.settings.Recipient
 import com.example.parentphoto.settings.Settings
 import com.example.parentphoto.ui.theme.FamilyPhotoTheme
 import kotlinx.coroutines.flow.Flow
@@ -54,7 +60,22 @@ class SettingsScreenTest {
     @get:Rule
     val rule = createAndroidComposeRule<ComponentActivity>()
 
-    private class FakeStore(initial: Settings, var passwordSaved: Boolean) : SettingsScreenStore {
+    private class FakeStore(initial: Settings, var passwordSaved: Boolean) : SettingsScreenStore, RecipientStore {
+        var nextId = 1
+        override suspend fun addRecipient(name: String, email: String): Recipient? {
+            val list = flow.value.recipients
+            if (list.size >= 6) return null
+            return Recipient("id${nextId++}", name, email).also { flow.value = flow.value.copy(recipients = list + it) }
+        }
+        override suspend fun updateRecipient(id: String, name: String, email: String): Boolean {
+            flow.value = flow.value.copy(
+                recipients = flow.value.recipients.map { if (it.id == id) it.copy(name = name, email = email) else it },
+            )
+            return true
+        }
+        override suspend fun deleteRecipient(id: String) {
+            flow.value = flow.value.copy(recipients = flow.value.recipients.filterNot { it.id == id })
+        }
         val flow = MutableStateFlow(initial)
         val saves = mutableListOf<Pair<Settings, String?>>()
         var failSave = false
@@ -85,13 +106,23 @@ class SettingsScreenTest {
 
     private val pw16 = "abcdefghijklmnop"
 
+    // 未送信キューの偽物。削除確認の枚数と、宛先削除の呼び出しを記録する
+    private var queuedCount = 0
+    private val deletedCalls = mutableListOf<String>()
+    private val outbox = object : RecipientOutbox {
+        override suspend fun countForRecipient(recipientId: String) = queuedCount
+        override suspend fun onRecipientDeleted(recipientId: String) { deletedCalls += recipientId }
+    }
+
+    private fun recipients(n: Int) = (1..n).map { Recipient("r$it", "送り先$it", "r$it@example.jp") }
+
     private fun show(settings: Settings = Settings(), passwordSaved: Boolean = false) {
         store = FakeStore(settings, passwordSaved)
         // 終了時に viewModelScope を止めるため ViewModelStore に入れる
         val factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T =
-                SettingsViewModel(store, { resumes++ }, Patterns.EMAIL_ADDRESS, {}) as T
+                SettingsViewModel(store, { resumes++ }, store, outbox, Patterns.EMAIL_ADDRESS, {}) as T
         }
         vm = ViewModelProvider(vmStore, factory)[SettingsViewModel::class.java]
         rule.setContent {
@@ -306,5 +337,139 @@ class SettingsScreenTest {
         rule.waitForIdle()
         val h2 = rule.onNodeWithText("メール設定").getUnclippedBoundsInRoot().height
         assertTrue("h1=$h1 h2=$h2", h2 > h1 * 1.5f)
+    }
+
+    // ---- 送り先(PLAN-2) ----
+
+    private fun recipientField(f: RecipientField) = rule.onNodeWithTag(RecipientTags.field(f))
+    private fun dialogButton(label: String) = rule.onNode(hasText(label) and hasAnyAncestor(isDialog()))
+    private fun dialogSave() = dialogButton("保存").performClick()
+
+    private fun addRecipient(name: String, email: String) {
+        rule.onNodeWithTag(RecipientTags.ADD).performScrollTo().performClick()
+        recipientField(RecipientField.NAME).performTextInput(name)
+        recipientField(RecipientField.EMAIL).performTextInput(email)
+        dialogSave()
+        rule.waitForIdle()
+    }
+
+    @Test fun addUpToSixThenAddDisabled() {
+        show()
+        rule.onNodeWithText("送り先 0/6").assertExists()
+        addRecipient("お父さん", "chichi@example.jp")
+        rule.onNodeWithText("送り先 1/6").assertExists()
+        rule.onNodeWithText("お父さん").assertExists()
+        rule.onNodeWithText("chichi@example.jp").assertExists()
+        (2..6).forEach { addRecipient("送り先$it", "r$it@example.jp") }
+        rule.onNodeWithText("送り先 6/6").assertExists()
+        rule.onNodeWithTag(RecipientTags.ADD).assertIsNotEnabled()
+        assertEquals(6, store.flow.value.recipients.size)
+        // 送り先の変更は保存ボタンに影響しない
+        save().assertIsNotEnabled()
+    }
+
+    @Test fun dialogTitlesAndValidationKeepDialogOpen() {
+        show(Settings(recipients = recipients(1)))
+        rule.onNodeWithTag(RecipientTags.ADD).performScrollTo().performClick()
+        rule.onNodeWithText("送り先を追加").assertIsDisplayed()
+        // 未入力でも保存は押せ、押すとエラーで開いたまま
+        dialogButton("保存").assertIsEnabled()
+        dialogSave()
+        rule.onNodeWithText("表示名を入力してください").assertIsDisplayed()
+        rule.onNodeWithText("メールアドレスの形式が正しくありません").assertIsDisplayed()
+        rule.onNodeWithText("送り先を追加").assertIsDisplayed()
+        recipientField(RecipientField.NAME).assertIsFocused()
+        // 11文字はエラー、10文字は通る
+        recipientField(RecipientField.NAME).performTextInput("あいうえおかきくけこさ")
+        recipientField(RecipientField.EMAIL).performTextInput("haha@example.jp")
+        dialogSave()
+        rule.onNodeWithText("10文字以内で入力してください").assertIsDisplayed()
+        assertEquals(1, store.flow.value.recipients.size)
+        recipientField(RecipientField.NAME).performTextClearance()
+        recipientField(RecipientField.NAME).performTextInput("あいうえおかきくけこ")
+        dialogSave()
+        rule.waitForIdle()
+        rule.onNodeWithText("送り先を追加").assertDoesNotExist()
+        assertEquals("あいうえおかきくけこ", store.flow.value.recipients[1].name)
+
+        rule.onAllNodesWithContentDescription("編集")[0].performClick()
+        rule.onNodeWithText("送り先を編集").assertIsDisplayed()
+    }
+
+    @Test fun imeNextMovesToEmail() {
+        show()
+        rule.onNodeWithTag(RecipientTags.ADD).performScrollTo().performClick()
+        recipientField(RecipientField.NAME).performClick().performImeAction()
+        recipientField(RecipientField.EMAIL).assertIsFocused()
+    }
+
+    @Test fun editKeepsPositionAndBackDiscards() {
+        show(Settings(recipients = recipients(3)))
+        rule.onAllNodesWithContentDescription("編集")[1].performClick()
+        recipientField(RecipientField.NAME).performTextClearance()
+        recipientField(RecipientField.NAME).performTextInput("お母さん")
+        // 戻るでは保存しない(1回目はキーボードを閉じるだけのことがある)
+        systemBack()
+        if (rule.onAllNodesWithText("送り先を編集").fetchSemanticsNodes().isNotEmpty()) systemBack()
+        rule.onNodeWithText("送り先を編集").assertDoesNotExist()
+        assertEquals("送り先2", store.flow.value.recipients[1].name)
+        assertEquals(0, closes)
+        // 保存すると同じ位置で変わる
+        rule.onAllNodesWithContentDescription("編集")[1].performClick()
+        recipientField(RecipientField.NAME).performTextClearance()
+        recipientField(RecipientField.NAME).performTextInput("お母さん")
+        dialogSave()
+        rule.waitForIdle()
+        assertEquals(listOf("r1", "r2", "r3"), store.flow.value.recipients.map { it.id })
+        assertEquals("お母さん", store.flow.value.recipients[1].name)
+    }
+
+    @Test fun cancelButtonDiscards() {
+        show(Settings(recipients = recipients(1)))
+        rule.onAllNodesWithContentDescription("編集")[0].performClick()
+        recipientField(RecipientField.NAME).performTextInput("追記")
+        dialogButton("キャンセル").performClick()
+        rule.onNodeWithText("送り先を編集").assertDoesNotExist()
+        assertEquals("送り先1", store.flow.value.recipients[0].name)
+    }
+
+    @Test fun deleteWordingByCountAndCancel() {
+        show(Settings(recipients = recipients(2)))
+        rule.onAllNodesWithContentDescription("削除").assertCountEquals(2)
+        rule.onAllNodesWithContentDescription("編集").assertCountEquals(2)
+        rule.onAllNodesWithContentDescription("削除")[0].performClick()
+        rule.onNodeWithText("この宛先を削除しますか？").assertIsDisplayed()
+        dialogButton("キャンセル").performClick()
+        rule.onNodeWithText("この宛先を削除しますか？").assertDoesNotExist()
+        assertEquals(2, store.flow.value.recipients.size)
+
+        queuedCount = 2
+        rule.onAllNodesWithContentDescription("削除")[0].performClick()
+        rule.onNodeWithText(
+            "この宛先を削除しますか？ 送れていない写真が2枚あります。削除すると、その写真は送られなくなります（未送信一覧に残ります）。",
+        ).assertIsDisplayed()
+        // 戻るはキャンセルと同じ
+        systemBack()
+        rule.onNodeWithText("この宛先を削除しますか？", substring = true).assertDoesNotExist()
+        assertEquals(2, store.flow.value.recipients.size)
+        assertTrue(deletedCalls.isEmpty())
+
+        rule.onAllNodesWithContentDescription("削除")[0].performClick()
+        dialogButton("削除").performClick()
+        rule.waitUntil(5_000) { deletedCalls.isNotEmpty() }
+        assertEquals(listOf("r2"), store.flow.value.recipients.map { it.id })
+        assertEquals(listOf("r1"), deletedCalls)
+        rule.onNodeWithText("送り先 1/6").assertExists()
+    }
+
+    @Test fun longEmailIsOneLineAndEmojiName() {
+        val name = "\uD83D\uDC68\u200D\uD83D\uDC69お父さん"
+        val long = "very.long.address.for.testing.ellipsis.${"x".repeat(60)}@example.jp"
+        show(Settings(recipients = listOf(Recipient("r1", name, long))))
+        rule.onNodeWithText(name).assertIsDisplayed()
+        val emailBounds = rule.onNodeWithText(long).getUnclippedBoundsInRoot()
+        val nameBounds = rule.onNodeWithText(name).getUnclippedBoundsInRoot()
+        // 長いアドレスも1行(名前の行と同程度の高さ)
+        assertTrue(emailBounds.height < nameBounds.height * 1.5f)
     }
 }
