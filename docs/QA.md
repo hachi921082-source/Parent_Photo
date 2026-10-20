@@ -450,3 +450,9 @@ Background: a self-review found places where the implementer would have had to c
 - Recipient dialog: on 保存 with errors, focus moves to the first error field (same as Q53).
 - Visuals accepted as built: 追加 full-width outlined button; display names wrap; rows min 56 dp; address in a lighter color; empty list shows only the heading and 追加; delete confirm dialog without title.
 - CONFIRMED by the user.
+
+### Q72. Test-send section details left open by ds 9 (settings-screen PLAN-3) [RESOLVED]
+- Recipient dropdown label: "送り先".
+- With 0 recipients the dropdown stays visible, empty and disabled (hint "送り先を登録してください" shown).
+- Visuals accepted as built: テスト送信 full-width filled button; progress dialog without title (32 dp spinner + "送信中..."); result dialog without title.
+- CONFIRMED by the user.
