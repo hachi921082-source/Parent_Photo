@@ -13,4 +13,26 @@
     <string name="err_host_empty">SMTPホストを入力してください</string>
     <string name="err_host_format">SMTPホストの形式が正しくありません</string>
     <string name="err_port_range">1〜65535の数字を入力してください</string>
+    <!-- 父親向け画面(ds 3.1、photo-send-flow PLAN-2 2) -->
+    <string name="retry_button">やり直す</string>
+    <string name="no_recipients">送り先が登録されていません</string>
+    <string name="cancel_window_label">%1$d秒後に送ります</string>
+    <string name="cancel_button">取り消す</string>
+    <string name="sending">送信中...</string>
+    <string name="sent">送りました！</string>
+    <string name="queued_notice">あとで送ります</string>
+    <string name="badge_unsent">未送信 %1$d件</string>
+    <string name="badge_attention">送れていません %1$d件</string>
+    <string name="outbox_full_guidance">送れていない写真が5枚あります。ネットワークを確認してください</string>
+    <string name="setup_required">設定が必要です</string>
+    <string name="permission_denied_guidance">カメラの使用を許可してください</string>
+    <string name="open_settings_button">設定を開く</string>
+    <string name="capture_failure">撮影できませんでした。もう一度お試しください</string>
+    <!-- 設定画面の Snackbar(ds 3.1。settings-screen で使う) -->
+    <string name="snackbar_saved">保存しました</string>
+    <string name="snackbar_waiting">順番待ちです。しばらくお待ちください</string>
+    <!-- 読み上げ用の説明(ds 9.9) -->
+    <string name="cd_shutter">撮影</string>
+    <string name="cd_settings">設定</string>
+    <string name="cd_progress">処理中</string>
 </resources>
