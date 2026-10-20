@@ -87,6 +87,7 @@ fun SettingsRoute(
     val bringRequesters = remember { FormField.entries.associateWith { BringIntoViewRequester() } }
     var dirtyDialog by rememberSaveable { mutableStateOf(false) }
     val savedMessage = stringResource(R.string.snackbar_saved)
+    val saveFailedMessage = stringResource(R.string.snackbar_save_failed)
 
     LaunchedEffect(viewModel) { viewModel.onOpened() }
     LaunchedEffect(viewModel) {
@@ -95,6 +96,9 @@ fun SettingsRoute(
                 // Snackbar は表示の間待つので、合図の受け取りを止めないよう別に動かす
                 SettingsEvent.Saved -> launch {
                     snackbarHostState.showSnackbar(savedMessage, duration = SnackbarDuration.Short)
+                }
+                SettingsEvent.SaveFailed -> launch {
+                    snackbarHostState.showSnackbar(saveFailedMessage, duration = SnackbarDuration.Short)
                 }
                 is SettingsEvent.FocusField -> {
                     bringRequesters.getValue(e.field).bringIntoView()
