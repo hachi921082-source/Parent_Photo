@@ -252,7 +252,7 @@ class OutboxRepositoryTest {
     }
 
     @Test
-    fun markQueuedOfflineAndTransientQueueAndEnqueue() = runBlocking {
+    fun markQueuedOfflineAndTransientQueueAndTriggerNow() = runBlocking {
         val a = create(); val b = create()
         now += 10_000 // 前面失敗でも24時間の起点は変えない
         repo.markQueued(a, MailResult.Offline)
@@ -261,7 +261,9 @@ class OutboxRepositoryTest {
         assertEquals(Phase.QUEUED, row(b)!!.phase)
         assertEquals(ItemState.WAITING, row(b)!!.state)
         assertEquals(now - 10_000, row(b)!!.retryStartMillis)
-        assertEquals(2, scheduler.enqueued)
+        // 前面の失敗・回線なしはバックオフ待ちを解いてすぐ動かす(Q68)
+        assertEquals(2, scheduler.triggered)
+        assertEquals(0, scheduler.enqueued)
         assertTrue(alerter.calls.isEmpty())
         val list = logs()
         assertEquals(SendLogResult.FAILED, list[0].result)
@@ -283,10 +285,39 @@ class OutboxRepositoryTest {
         assertEquals(Phase.QUEUED, row(m)!!.phase)
         assertEquals(now, row(m)!!.attentionSinceMillis)
         assertEquals(0, scheduler.enqueued)
+        assertEquals(0, scheduler.triggered)
         // 送り先なしは FAILED を書かない
         assertEquals(listOf("REJECTED", "AUTH"), logs().map { it.code })
         assertEquals(0, repo.activeCount.first())
         assertEquals(3, repo.attentionCount.first())
+    }
+
+    @Test
+    fun requeueAbandonedMovesOnlyForegroundRowsAndTriggersNow() = runBlocking {
+        val undo = create()
+        val sending = create().also { repo.setPhase(it, Phase.SENDING_FG) }
+        val queued = create().also { repo.markQueued(it, MailResult.Offline) }
+        val sent = create().also { repo.markSent(it) }
+        val attention = create().also { repo.moveToAttention(listOf(it), AttentionReason.AUTH) }
+        val logsBefore = logs().size
+        val triggeredBefore = scheduler.triggered
+
+        repo.requeueAbandoned(undo)
+        repo.requeueAbandoned(sending)
+        assertEquals(Phase.QUEUED, row(undo)!!.phase)
+        assertEquals(Phase.QUEUED, row(sending)!!.phase)
+        assertEquals(triggeredBefore + 2, scheduler.triggered)
+
+        // 送信待ち・送信済み(行なし)・要確認は何もしない
+        repo.requeueAbandoned(queued)
+        repo.requeueAbandoned(sent)
+        repo.requeueAbandoned(attention)
+        assertEquals(triggeredBefore + 2, scheduler.triggered)
+        assertNull(row(sent))
+        assertEquals(ItemState.ATTENTION, row(attention)!!.state)
+        // 送信ログは書かない
+        assertEquals(logsBefore, logs().size)
+        assertEquals(0, scheduler.enqueued)
     }
 
     @Test(expected = IllegalArgumentException::class)
