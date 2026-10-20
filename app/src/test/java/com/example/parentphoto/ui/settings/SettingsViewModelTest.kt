@@ -193,14 +193,23 @@ class SettingsViewModelTest {
         assertEquals(ValidationError.PASSWORD_LENGTH, v.form.value.errors[FormField.PASSWORD])
     }
 
-    @Test fun `保存に失敗したら入力を残し再開を呼ばない`() {
+    @Test fun `保存に失敗したら入力を残し、保存できませんでしたを出し、再開を呼ばない`() = runTest {
         val store = FakeStore(Settings(smtpUser = "a@b.jp"), true).apply { failSave = true }
         val v = vm(store)
+        val events = mutableListOf<SettingsEvent>()
+        val job = launch(UnconfinedTestDispatcher(testScheduler)) { v.events.toList(events) }
         v.onSenderNameChange("父")
         v.onSave()
         assertTrue(v.form.value.dirty)
+        assertEquals("父", v.form.value.values.senderName)
         assertEquals(0, resumes)
+        assertEquals(listOf<SettingsEvent>(SettingsEvent.SaveFailed), events)
         assertTrue(logs.single().startsWith("saveSmtp failed"))
+        // 直れば同じ入力のまま保存し直せる
+        store.failSave = false
+        v.onSave()
+        assertEquals("父", store.saves.single().sender)
+        job.cancel()
     }
 
     @Test fun `閉じると入力を捨て、開き直すと保存済みの値を読む`() {
