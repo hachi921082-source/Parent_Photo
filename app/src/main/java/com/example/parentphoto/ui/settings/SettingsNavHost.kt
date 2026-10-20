@@ -15,7 +15,11 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
@@ -25,6 +29,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navigation
 import com.example.parentphoto.R
+import kotlinx.coroutines.launch
 
 /** 設定の画面ルート(settings-screen PLAN.md「Routes」)。 */
 object SettingsRoutes {
@@ -67,15 +72,35 @@ fun SettingsNavHost(viewModel: SettingsViewModel, onClose: () -> Unit) {
                     onClose = close,
                 )
             }
-            composable(SettingsRoutes.UNSENT) {
-                // TODO(PLAN-4): 未送信一覧(ds 9.6)の中身を置く
-                SettingsSubScreen(title = R.string.link_unsent, onBack = backToMain)
-            }
+            composable(SettingsRoutes.UNSENT) { UnsentRoute(viewModel, onBack = backToMain) }
             composable(SettingsRoutes.LOG) {
-                // TODO(PLAN-4): 送信ログ(ds 9.7)の中身を置く
-                SettingsSubScreen(title = R.string.link_send_log, onBack = backToMain)
+                val log by viewModel.sendLog.collectAsState()
+                SettingsSubScreen(title = R.string.link_send_log, onBack = backToMain) { m -> SendLogList(log, m) }
             }
         }
+    }
+}
+
+/**
+ * 未送信一覧の副画面(ds 9.6)。「今すぐ再送」が枠待ちになったときだけ、この画面の Snackbar に
+ * 「順番待ちです。しばらくお待ちください」を出す(Short・アクションなし、Q57)。
+ */
+@Composable
+private fun UnsentRoute(viewModel: SettingsViewModel, onBack: () -> Unit) {
+    val groups by viewModel.unsent.collectAsState()
+    val deleteId by viewModel.unsentDeleteId.collectAsState()
+    val snackbar = remember { SnackbarHostState() }
+    val waitingMessage = stringResource(R.string.snackbar_waiting)
+    LaunchedEffect(viewModel) {
+        viewModel.unsentWaitingEvents.collect {
+            launch { snackbar.showSnackbar(waitingMessage, duration = SnackbarDuration.Short) }
+        }
+    }
+    SettingsSubScreen(title = R.string.link_unsent, onBack = onBack, snackbarHostState = snackbar) { m ->
+        UnsentList(groups, onResend = viewModel::onResendNow, onDelete = viewModel::onDeleteUnsent, modifier = m)
+    }
+    if (deleteId != null) {
+        DeleteUnsentDialog(onConfirm = viewModel::onDeleteUnsentConfirmed, onDismiss = viewModel::onDeleteUnsentDismiss)
     }
 }
 
