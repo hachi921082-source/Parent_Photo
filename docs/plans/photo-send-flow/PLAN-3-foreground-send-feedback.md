@@ -8,6 +8,7 @@ Source: ds 2.3, 10.2, 4.3 (copy), 6.2 (referenced). Package `ui/`, `notify/Feedb
 3. Feedback
 4. Tests
 5. Steps
+6. Implementation notes
 
 ## 1. Contracts needed from pending plans
 - `OutboxRepository.createItem(recipientId, capturedAtMillis, previewFile): ItemId` creates a row with phase CANCEL_WINDOW and copies the photo into the outbox dir (ds 7.3).
@@ -36,3 +37,12 @@ Until implemented, use fakes. Do not define Room/mail internals here.
 1. Fakes for the contracts above + ViewModel logic + tests.
 2. `Feedback`.
 3. Replace fakes with real implementations after the pending plans are implemented.
+
+
+## 6. Implementation notes
+- Contracts are real now: `SendFlowOutbox` (ui/MainPorts.kt) gained `createItem`, `deleteItem`, `startForegroundSend` (= `setPhase(SENDING_FG)`), `sendForeground` (= `ParentPhotoApp.smtpSender.sendForeground` on `Dispatchers.IO`), `markSent`, `markQueued`; adapter in `MainViewModelFactory.kt`.
+- Recipient tap: ignored while `createItem` runs (no double item). `OutboxFullException` -> Q65 notice, Preview kept; any other failure -> Preview kept, logged (`ParentPhoto/Flow`). Success -> `setPreviewExists(false)`, CancelWindow.
+- Undo window: deadline on `elapsedRealtime`; a loop sets 3/2/1 at each second boundary; `onResume` re-runs it from the clock (fires at once if the deadline passed while asleep). 取り消す: `setPreviewExists(true)` then `deleteItem`, same Preview (photo kept through CancelWindow/Sending).
+- Foreground send: `withTimeoutOrNull(FG_SEND_TIMEOUT_MS)`; null -> `Failure(TRANSIENT, TIMEOUT)`; exceptions -> `Failure(TRANSIENT, OTHER)`. Repository write failures are logged and do not stop the flow (recovery handles leftovers).
+- Sent / QueuedNotice: 2000 ms `DeadlineTimer` (re-checked on resume), then delete the cached photo and run precedence. Feedback (`notify/Feedback.kt`, `SuccessFeedback`) plays once on entering Sent; never replayed on resume.
+- Known limit: if the ViewModel is cleared (Activity finished) during CancelWindow/Sending while the process lives, the item stays CANCEL_WINDOW/SENDING_FG until the next cold start recovery. Back is blocked in these states, so this needs task removal without process death.
