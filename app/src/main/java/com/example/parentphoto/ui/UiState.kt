@@ -67,6 +67,10 @@ data class MainUiModel(
     val state: UiState = UiState.Loading,
     val settingsOpen: Boolean = false,
     val captureFailureMessageVisible: Boolean = false,
+    // Preview 中に満杯で送り先を拒否した時の案内(3000 ms、Q65)
+    val outboxFullNoticeVisible: Boolean = false,
+    // 撮影済みの写真(Preview・取り消し猶予・送信中に表示する)。無ければ null
+    val photoFile: File? = null,
     val unsentCount: Int = 0,
     val attentionCount: Int = 0,
     val recipients: List<Recipient> = emptyList(),
