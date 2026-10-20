@@ -418,3 +418,10 @@ Background: a self-review found places where the implementer would have had to c
 - Context: a kill during the worker's send leaves WorkManager's ~15 min backoff in place; recovery's KEEP enqueue does not shorten it.
 - Options: A accept as spec (recommended by the agent); B `triggerNow` only when recovery requeued rows; C `triggerNow` on every startup.
 - Answer: C. Startup recovery calls `triggerNow` (REPLACE if not RUNNING, else follow-up `outbox-send-next`) instead of `enqueueDefault` whenever any QUEUED row exists after recovery, so every app open resets the backoff and retries immediately. Accepted trade-off: more frequent retries. CONFIRMED by the user.
+
+### Q65. Recipient tap in Preview while active count is 5 (race) [RESOLVED]
+- Context: ds 2.4 says "reject with OutboxFull notice" but not what happens to the photo. Rare race only (Preview reserves a slot).
+- Answer: keep Preview and the photo; overlay the OutboxFull notice text for 3000 ms; recipient buttons work again once the count drops. No item is created. CONFIRMED by the user.
+
+### Q66. Background while the camera permission dialog is shown [RESOLVED]
+- Answer: blank Loading screen behind the system dialog (no camera frame). CONFIRMED by the user.
