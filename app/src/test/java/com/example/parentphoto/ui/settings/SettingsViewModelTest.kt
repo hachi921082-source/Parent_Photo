@@ -453,6 +453,37 @@ class SettingsViewModelTest {
         assertEquals(listOf("count:r1", "deleted:r1:stillThere=false"), outboxCalls)
     }
 
+    @Test fun `送り先の削除に失敗したら保存できませんでした、閉じた後なら出さない`() = runTest {
+        val store = FakeStore(Settings(recipients = recipients(2)), false)
+        val failing = object : RecipientStore by store {
+            override suspend fun deleteRecipient(id: String) { throw java.io.IOException("disk") }
+        }
+        val events = mutableListOf<SettingsEvent>()
+        val v = SettingsViewModel(store, { resumes++ }, failing, outbox, sender, unsent, pat, { logs += it }).also { it.onOpened() }
+        lastStore = store
+        val job = launch(UnconfinedTestDispatcher(testScheduler)) { v.events.toList(events) }
+        v.onDeleteRecipient(store.flow.value.recipients[0])
+        v.onDeleteConfirmed()
+        assertEquals(listOf<SettingsEvent>(SettingsEvent.SaveFailed), events)
+        assertEquals(2, store.flow.value.recipients.size)
+        assertTrue(outboxCalls.none { it.startsWith("deleted") })
+        // 削除の最中に設定が閉じられたら、失敗の合図は次の回に持ち越さない
+        events.clear()
+        val slow = CompletableDeferred<Unit>()
+        val failingLater = object : RecipientStore by store {
+            override suspend fun deleteRecipient(id: String) { slow.await(); throw java.io.IOException("disk") }
+        }
+        val v2 = SettingsViewModel(store, { resumes++ }, failingLater, outbox, sender, unsent, pat, { logs += it }).also { it.onOpened() }
+        val job2 = launch(UnconfinedTestDispatcher(testScheduler)) { v2.events.toList(events) }
+        v2.onDeleteRecipient(store.flow.value.recipients[0])
+        v2.onDeleteConfirmed()
+        v2.onClosed()
+        slow.complete(Unit)
+        assertTrue(events.isEmpty())
+        job.cancel()
+        job2.cancel()
+    }
+
     @Test fun `削除のキャンセルは何も消さない`() {
         val store = FakeStore(Settings(recipients = recipients(1)), false)
         val v = vm(store)
@@ -492,20 +523,48 @@ class SettingsViewModelTest {
         assertNull(TestSendLogic.hint(1, savedSetupValid = true, formDirty = false))
     }
 
+    @Test fun `読み込み前は案内を出さずテスト送信も押せない`() {
+        assertNull(TestSendLogic.hint(1, null, false))
+        assertNull(TestSendLogic.hint(1, null, true))
+        // 送り先なしの案内は読み込みに左右されない
+        assertEquals(R.string.hint_no_recipients, TestSendLogic.hint(0, null, false))
+        assertFalse(TestSendLogic.canSend(1, null, false))
+        assertFalse(TestSendLogic.canSend(0, true, false))
+        assertFalse(TestSendLogic.canSend(1, false, false))
+        assertFalse(TestSendLogic.canSend(1, true, true))
+        assertTrue(TestSendLogic.canSend(1, true, false))
+    }
+
+    @Test fun `読み込み前の ViewModel は null、押しても送らない`() {
+        val store = FakeStore(Settings(smtpUser = "a@b.jp", recipients = recipients(1)), true)
+        // 設定の最初の発行を保留して「読み込み前」を作る
+        val gated = object : SettingsScreenStore by store {
+            override val settings: Flow<Settings> = kotlinx.coroutines.flow.flow {
+                CompletableDeferred<Unit>().await()
+                emit(store.flow.value)
+            }
+        }
+        val v = SettingsViewModel(gated, { resumes++ }, store, outbox, sender, unsent, pat, { logs += it })
+        assertNull(v.savedSetupValid.value)
+        v.onTestSend()
+        assertTrue(sentTo.isEmpty())
+        assertEquals(TestSendPhase.Idle, v.testSend.value)
+    }
+
     @Test fun `保存済み設定の判定はパスワードとアドレスで変わる`() {
-        assertFalse(vm(FakeStore(Settings(smtpUser = "a@b.jp"), false)).savedSetupValid.value)
-        assertFalse(vm(FakeStore(Settings(smtpUser = "bad"), true)).savedSetupValid.value)
-        assertTrue(vm(FakeStore(Settings(smtpUser = "a@b.jp"), true)).savedSetupValid.value)
+        assertEquals(false, vm(FakeStore(Settings(smtpUser = "a@b.jp"), false)).savedSetupValid.value)
+        assertEquals(false, vm(FakeStore(Settings(smtpUser = "bad"), true)).savedSetupValid.value)
+        assertEquals(true, vm(FakeStore(Settings(smtpUser = "a@b.jp"), true)).savedSetupValid.value)
     }
 
     @Test fun `保存すると保存済み設定が有効になる`() {
         val store = FakeStore(Settings(recipients = recipients(1)), false)
         val v = vm(store)
-        assertFalse(v.savedSetupValid.value)
+        assertEquals(false, v.savedSetupValid.value)
         v.onSmtpUserChange("a@b.jp")
         v.onPasswordChange(pw16)
         v.onSave()
-        assertTrue(v.savedSetupValid.value)
+        assertEquals(true, v.savedSetupValid.value)
     }
 
     @Test fun `先頭が選ばれ、選んだ送り先が消えたら残りの先頭になる`() {
