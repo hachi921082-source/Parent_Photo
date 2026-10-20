@@ -4,6 +4,9 @@ import com.example.parentphoto.mail.FailureKind
 import com.example.parentphoto.mail.ItemId
 import com.example.parentphoto.mail.MailCode
 import com.example.parentphoto.mail.MailResult
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.ViewModelStore
 import com.example.parentphoto.notify.NotificationPermissionRequester
 import com.example.parentphoto.outbox.OutboxFullException
 import com.example.parentphoto.settings.ButtonSize
@@ -92,6 +95,11 @@ class MainViewModelTest {
         override suspend fun markQueued(itemId: ItemId, result: MailResult) {
             queued += itemId to result
             events += "queued:$itemId"
+        }
+
+        val abandoned = mutableListOf<String>()
+        override fun requeueAbandoned(itemId: ItemId) {
+            abandoned += itemId
         }
     }
 
@@ -925,6 +933,69 @@ class MainViewModelTest {
         vm.onSettingsLongPress()
         vm.onResume()
         assertEquals(UiState.Sending("item1"), vm.state())
+        assertFalse(vm.ui.value.settingsOpen)
+    }
+
+    // 画面の終了(タスクを払いのけた時)を再現する。onCleared は ViewModelStore 経由で呼ばれる
+    private fun clear(vm: MainViewModel) {
+        val store = ViewModelStore()
+        ViewModelProvider(store, object : ViewModelProvider.Factory {
+            @Suppress("UNCHECKED_CAST")
+            override fun <T : ViewModel> create(modelClass: Class<T>): T = vm as T
+        })[MainViewModel::class.java]
+        store.clear()
+    }
+
+    @Test
+    fun 猶予中に画面が閉じられたら送信待ちにしてすぐ送る() = runTest(dispatcher) {
+        val vm = ready(newVm())
+        toCancelWindow(vm)
+        clear(vm)
+        assertEquals(listOf("item1"), outbox.abandoned)
+        assertFalse(outbox.previewExists)
+    }
+
+    @Test
+    fun 送信中に画面が閉じられたら送信待ちにしてすぐ送る() = runTest(dispatcher) {
+        val vm = ready(newVm())
+        toCancelWindow(vm)
+        advanceTimeBy(3000)
+        runCurrent()
+        assertEquals(UiState.Sending("item1"), vm.state())
+        clear(vm)
+        assertEquals(listOf("item1"), outbox.abandoned)
+    }
+
+    @Test
+    fun 送信後やPreviewで閉じられても何もしない() = runTest(dispatcher) {
+        val vm = ready(newVm())
+        toCancelWindow(vm)
+        advanceTimeBy(3000)
+        runCurrent()
+        outbox.sendGate.complete(MailResult.Success)
+        runCurrent()
+        assertEquals(UiState.Sent, vm.state())
+        clear(vm)
+
+        val vm2 = ready(newVm())
+        toPreview(vm2)
+        clear(vm2)
+        assertTrue(outbox.abandoned.isEmpty())
+    }
+
+    @Test
+    fun 項目作成中は設定を開けない() = runTest(dispatcher) {
+        val vm = ready(newVm())
+        toPreview(vm)
+        val gate = CompletableDeferred<Unit>()
+        outbox.createGate = gate
+        vm.onRecipientTapped("1")
+        runCurrent()
+        vm.onSettingsLongPress()
+        assertFalse(vm.ui.value.settingsOpen)
+        gate.complete(Unit)
+        runCurrent()
+        assertEquals(UiState.CancelWindow("item1", 3), vm.state())
         assertFalse(vm.ui.value.settingsOpen)
     }
 
