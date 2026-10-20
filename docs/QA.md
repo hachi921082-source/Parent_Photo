@@ -456,3 +456,8 @@ Background: a self-review found places where the implementer would have had to c
 - With 0 recipients the dropdown stays visible, empty and disabled (hint "送り先を登録してください" shown).
 - Visuals accepted as built: テスト送信 full-width filled button; progress dialog without title (32 dp spinner + "送信中..."); result dialog without title.
 - CONFIRMED by the user.
+
+### Q73. settings-screen PLAN-4 look/wording adopted as built [ADOPTED, not individually confirmed]
+- Per the 2026-10-21 working rule (look/wording is built as recommended and listed at feature end), these were adopted without a per-item question: 要確認 rows show "要確認" and the reason on two lines (reason in a lighter color); send-log row line 1 = time + recipient, line 2 = result (+ code for failures); outlined buttons; divider lines between rows; delete confirm dialog without title; thumbnail placeholder #E0E0E0.
+- The user may still ask to change any of them.
+- Known issue carried to acceptance-verification: on API 26, pressing 保存 or the password 変更→キャンセル can move focus to the sender-name field and open the keyboard; check on the real device (Android 16) whether it reproduces.
