@@ -158,9 +158,20 @@ fun SettingsRoute(
             recipients?.let { list ->
                 RecipientsSection(
                     recipients = list,
-                    onAdd = viewModel::onAddRecipient,
-                    onEdit = viewModel::onEditRecipient,
-                    onDelete = viewModel::onDeleteRecipient,
+                    // ダイアログを開く前にフォーカスを外す。入力中の欄が残ったままだと、閉じたときに
+                    // 送信者名の欄へフォーカスが戻ってキーボードが開く(レビュー指摘)
+                    onAdd = {
+                        screenFocus.clearFocus(force = true)
+                        viewModel.onAddRecipient()
+                    },
+                    onEdit = {
+                        screenFocus.clearFocus(force = true)
+                        viewModel.onEditRecipient(it)
+                    },
+                    onDelete = {
+                        screenFocus.clearFocus(force = true)
+                        viewModel.onDeleteRecipient(it)
+                    },
                 )
             }
             if (form.loaded) {
@@ -178,6 +189,7 @@ fun SettingsRoute(
                     recipients = list,
                     selected = testRecipient,
                     hintRes = TestSendLogic.hint(list.size, savedSetupValid, form.dirty),
+                    canSend = TestSendLogic.canSend(list.size, savedSetupValid, form.dirty),
                     sending = testSend != TestSendPhase.Idle,
                     onSelect = viewModel::onTestRecipientSelected,
                     onSend = viewModel::onTestSend,
@@ -310,7 +322,11 @@ private fun SmtpFormSection(
     )
     // 未保存の変更があれば(正しいかどうかに関係なく)押せる。検証は押したとき(Q53)
     Button(
-        onClick = viewModel::onSave,
+        onClick = {
+            // 入力中の欄のフォーカスを外してから保存する(欄の表示が変わった拍子に別の欄へ移らないように)
+            focusManager.clearFocus(force = true)
+            viewModel.onSave()
+        },
         enabled = form.dirty,
         modifier = Modifier.fillMaxWidth().testTag(SettingsTags.SAVE),
     ) { Text(stringResource(R.string.button_save)) }
@@ -355,6 +371,7 @@ private fun PasswordRow(
     actions: KeyboardActions,
     fieldModifier: Modifier,
 ) {
+    val focusManager = LocalFocusManager.current
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
         if (form.passwordMode == PasswordMode.SAVED) {
             OutlinedTextField(
@@ -366,7 +383,10 @@ private fun PasswordRow(
                 modifier = Modifier.weight(1f).then(fieldModifier),
             )
             Spacer(Modifier.width(8.dp))
-            TextButton(onClick = viewModel::onChangePassword) { Text(stringResource(R.string.button_change_password)) }
+            TextButton(onClick = {
+                focusManager.clearFocus(force = true)
+                viewModel.onChangePassword()
+            }) { Text(stringResource(R.string.button_change_password)) }
         } else {
             // 表示/非表示は画面だけの状態。欄の状態が変わったら伏せ字に戻す
             var shown by rememberSaveable(form.passwordMode) { mutableStateOf(false) }
@@ -392,7 +412,10 @@ private fun PasswordRow(
             )
             if (form.passwordMode == PasswordMode.CHANGING) {
                 Spacer(Modifier.width(8.dp))
-                TextButton(onClick = viewModel::onCancelPasswordChange) {
+                TextButton(onClick = {
+                    focusManager.clearFocus(force = true)
+                    viewModel.onCancelPasswordChange()
+                }) {
                     Text(stringResource(R.string.button_settings_cancel))
                 }
             }
