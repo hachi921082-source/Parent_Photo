@@ -19,7 +19,9 @@ import com.example.parentphoto.outbox.Phase
 import com.example.parentphoto.settings.Settings
 import com.example.parentphoto.settings.SettingsRepository
 import com.example.parentphoto.settings.SetupState
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -33,7 +35,7 @@ class MainViewModelFactory(private val app: ParentPhotoApp) : ViewModelProvider.
         require(modelClass.isAssignableFrom(MainViewModel::class.java)) { "unknown ViewModel: $modelClass" }
         val vm = MainViewModel(
             settingsSource = RepositorySettings(app.settingsRepository),
-            outbox = RepositoryOutbox(app.outboxRepository, app.smtpSender),
+            outbox = RepositoryOutbox(app.outboxRepository, app.smtpSender, app.appScope),
             capturer = ControllerCapturer(app.cameraController, app.previewFiles),
             cameraPermission = ContextCameraPermission(app),
             notificationPermission = NotificationPermissionRequester(app, app.settingsRepository),
@@ -67,6 +69,8 @@ private class RepositorySettings(private val repo: SettingsRepository) : SendFlo
 private class RepositoryOutbox(
     private val repo: OutboxRepository,
     private val sender: SmtpSender,
+    // プロセスと同じ寿命のスコープ(画面が終わっても続ける処理用)
+    private val appScope: CoroutineScope,
 ) : SendFlowOutbox {
     override val activeCount: Flow<Int> = repo.activeCount
     override val attentionCount: Flow<Int> = repo.attentionCount
@@ -88,6 +92,10 @@ private class RepositoryOutbox(
     override suspend fun markSent(itemId: ItemId) = repo.markSent(itemId)
 
     override suspend fun markQueued(itemId: ItemId, result: MailResult) = repo.markQueued(itemId, result)
+
+    override fun requeueAbandoned(itemId: ItemId) {
+        appScope.launch { repo.requeueAbandoned(itemId) }
+    }
 }
 
 /** CameraController で撮影する。束ね込みは CameraView(画面側)が行う */
