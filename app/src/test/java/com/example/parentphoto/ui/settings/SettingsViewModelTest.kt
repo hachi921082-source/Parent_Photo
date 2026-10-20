@@ -6,6 +6,13 @@ import com.example.parentphoto.R
 import com.example.parentphoto.mail.FailureKind
 import com.example.parentphoto.mail.MailCode
 import com.example.parentphoto.mail.MailResult
+import com.example.parentphoto.mail.SendLogResult
+import com.example.parentphoto.outbox.AttentionReason
+import com.example.parentphoto.outbox.ItemState
+import com.example.parentphoto.outbox.OutboxItemView
+import com.example.parentphoto.outbox.Phase
+import com.example.parentphoto.outbox.ResendOutcome
+import com.example.parentphoto.outbox.SendLogEntry
 import com.example.parentphoto.settings.ButtonSize
 import com.example.parentphoto.settings.Recipient
 import com.example.parentphoto.settings.Settings
@@ -104,9 +111,26 @@ class SettingsViewModelTest {
         gate.await()
     }
 
+    // 未送信キューの偽物(一覧・ログ・今すぐ再送・削除)
+    private class FakeUnsent : UnsentOutbox {
+        val itemsFlow = MutableStateFlow<List<OutboxItemView>>(emptyList())
+        val logFlow = MutableStateFlow<List<SendLogEntry>>(emptyList())
+        var outcome = ResendOutcome.Started
+        val resent = mutableListOf<String>()
+        val deleted = mutableListOf<String>()
+        override val items: Flow<List<OutboxItemView>> = itemsFlow
+        override val sendLog: Flow<List<SendLogEntry>> = logFlow
+        override suspend fun resendNow(itemId: String): ResendOutcome { resent += itemId; return outcome }
+        override suspend fun deleteManual(itemId: String) {
+            deleted += itemId
+            itemsFlow.value = itemsFlow.value.filterNot { it.id == itemId }
+        }
+    }
+    private val unsent = FakeUnsent()
+
     private fun vm(store: FakeStore): SettingsViewModel {
         lastStore = store
-        return SettingsViewModel(store, { resumes++ }, store, outbox, sender, pat, { logs += it }).also { it.onOpened() }
+        return SettingsViewModel(store, { resumes++ }, store, outbox, sender, unsent, pat, { logs += it }).also { it.onOpened() }
     }
 
     private fun recipients(n: Int) = (1..n).map { Recipient("r$it", "送り先$it", "r$it@example.jp") }
@@ -553,6 +577,95 @@ class SettingsViewModelTest {
         v.onClosed()
         assertEquals(TestSendPhase.Idle, v.testSend.value)
         assertEquals("r1", v.testRecipient.value!!.id)
+    }
+
+    // ---- 未送信一覧・送信ログ(PLAN-4) ----
+
+    private fun item(id: String, state: ItemState, phase: Phase = Phase.QUEUED, reason: AttentionReason? = null) =
+        OutboxItemView(id, "r1", "送り先1", 1_000L, state, phase, reason, java.io.File("x/$id.jpg"))
+
+    @Test fun `群分けは順番を保つ`() {
+        val g = UnsentLogic.group(
+            listOf(item("w1", ItemState.WAITING), item("w2", ItemState.WAITING), item("a1", ItemState.ATTENTION), item("a2", ItemState.ATTENTION)),
+        )
+        assertEquals(listOf("w1", "w2"), g.waiting.map { it.id })
+        assertEquals(listOf("a1", "a2"), g.attention.map { it.id })
+        assertTrue(UnsentLogic.group(emptyList()).isEmpty)
+    }
+
+    @Test fun `ボタンの可否は段階と理由で決まる`() {
+        assertEquals(RowButtons(true, true), UnsentLogic.buttons(item("1", ItemState.WAITING)))
+        listOf(Phase.CANCEL_WINDOW, Phase.SENDING_FG, Phase.SENDING_BG).forEach {
+            assertEquals(RowButtons(false, false), UnsentLogic.buttons(item("1", ItemState.WAITING, it)))
+        }
+        listOf(AttentionReason.AUTH, AttentionReason.PERMANENT, AttentionReason.RETRY_EXPIRED).forEach {
+            assertEquals(RowButtons(true, true), UnsentLogic.buttons(item("1", ItemState.ATTENTION, reason = it)))
+        }
+        assertEquals(
+            RowButtons(false, true),
+            UnsentLogic.buttons(item("1", ItemState.ATTENTION, reason = AttentionReason.RECIPIENT_DELETED)),
+        )
+    }
+
+    @Test fun `ログの文言とコードは失敗とテスト失敗だけ`() {
+        val expected = mapOf(
+            SendLogResult.SENT to R.string.log_sent,
+            SendLogResult.FAILED to R.string.log_failed,
+            SendLogResult.QUEUED_OFFLINE to R.string.log_queued_offline,
+            SendLogResult.DELETED_MANUAL to R.string.log_deleted_manual,
+            SendLogResult.DELETED_OVERFLOW to R.string.log_deleted_overflow,
+            SendLogResult.RESEND_REQUESTED to R.string.log_resend_requested,
+            SendLogResult.TEST_OK to R.string.log_test_ok,
+            SendLogResult.TEST_FAILED to R.string.log_test_failed,
+        )
+        assertEquals(SendLogResult.entries.toSet(), expected.keys)
+        expected.forEach { (r, res) -> assertEquals(res, UnsentLogic.resultLabel(r)) }
+        SendLogResult.entries.forEach { r ->
+            val shown = UnsentLogic.codeShown(SendLogEntry(1, 0, "x", r, "NETWORK"))
+            val wants = r == SendLogResult.FAILED || r == SendLogResult.TEST_FAILED
+            assertEquals(if (wants) "NETWORK" else "", shown)
+        }
+    }
+
+    @Test fun `今すぐ再送は枠待ちのときだけ順番待ちの合図`() = runTest {
+        val v = vm(validStore())
+        val events = mutableListOf<Unit>()
+        val job = launch(UnconfinedTestDispatcher(testScheduler)) { v.unsentWaitingEvents.toList(events) }
+        unsent.outcome = ResendOutcome.Started
+        v.onResendNow("a1")
+        unsent.outcome = ResendOutcome.NotAllowed
+        v.onResendNow("a1")
+        assertTrue(events.isEmpty())
+        unsent.outcome = ResendOutcome.Waiting
+        v.onResendNow("a1")
+        assertEquals(1, events.size)
+        assertEquals(listOf("a1", "a1", "a1"), unsent.resent)
+        job.cancel()
+    }
+
+    @Test fun `未送信の削除は確認してから、キャンセルでは消さない`() {
+        val v = vm(validStore())
+        v.onDeleteUnsent("w1")
+        assertEquals("w1", v.unsentDeleteId.value)
+        v.onDeleteUnsentDismiss()
+        assertNull(v.unsentDeleteId.value)
+        assertTrue(unsent.deleted.isEmpty())
+        v.onDeleteUnsent("w1")
+        v.onDeleteUnsentConfirmed()
+        assertEquals(listOf("w1"), unsent.deleted)
+        assertNull(v.unsentDeleteId.value)
+    }
+
+    @Test fun `一覧とログは窓口の流れを映す`() = runTest {
+        val v = vm(validStore())
+        val job = launch(UnconfinedTestDispatcher(testScheduler)) { v.unsent.collect {} }
+        val job2 = launch(UnconfinedTestDispatcher(testScheduler)) { v.sendLog.collect {} }
+        unsent.itemsFlow.value = listOf(item("w1", ItemState.WAITING), item("a1", ItemState.ATTENTION))
+        unsent.logFlow.value = listOf(SendLogEntry(2, 0, "x", SendLogResult.SENT, null))
+        assertEquals(listOf("w1"), v.unsent.value!!.waiting.map { it.id })
+        assertEquals(1, v.sendLog.value!!.size)
+        job.cancel()
+        job2.cancel()
     }
 
     @Test fun `次へは保存済みパスワード欄を飛ばす`() {
