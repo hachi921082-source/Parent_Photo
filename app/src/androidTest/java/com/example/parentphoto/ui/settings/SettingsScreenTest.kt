@@ -15,6 +15,12 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.assertHeightIsEqualTo
+import androidx.compose.ui.test.assertWidthIsEqualTo
+import androidx.compose.ui.test.onChildren
+import androidx.compose.ui.test.performScrollToIndex
+import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.assertCountEquals
@@ -44,6 +50,13 @@ import android.view.MotionEvent
 import com.example.parentphoto.mail.FailureKind
 import com.example.parentphoto.mail.MailCode
 import com.example.parentphoto.mail.MailResult
+import com.example.parentphoto.mail.SendLogResult
+import com.example.parentphoto.outbox.AttentionReason
+import com.example.parentphoto.outbox.ItemState
+import com.example.parentphoto.outbox.OutboxItemView
+import com.example.parentphoto.outbox.Phase
+import com.example.parentphoto.outbox.ResendOutcome
+import com.example.parentphoto.outbox.SendLogEntry
 import com.example.parentphoto.settings.ButtonSize
 import kotlinx.coroutines.CompletableDeferred
 import com.example.parentphoto.settings.Recipient
@@ -131,6 +144,23 @@ class SettingsScreenTest {
         gate.await()
     }
 
+    // 未送信キューの偽物(一覧・ログ・今すぐ再送・削除)
+    private class FakeUnsent : UnsentOutbox {
+        val itemsFlow = MutableStateFlow<List<OutboxItemView>>(emptyList())
+        val logFlow = MutableStateFlow<List<SendLogEntry>>(emptyList())
+        var outcome = ResendOutcome.Started
+        val resent = mutableListOf<String>()
+        val deleted = mutableListOf<String>()
+        override val items: Flow<List<OutboxItemView>> = itemsFlow
+        override val sendLog: Flow<List<SendLogEntry>> = logFlow
+        override suspend fun resendNow(itemId: String): ResendOutcome { resent += itemId; return outcome }
+        override suspend fun deleteManual(itemId: String) {
+            deleted += itemId
+            itemsFlow.value = itemsFlow.value.filterNot { it.id == itemId }
+        }
+    }
+    private val unsent = FakeUnsent()
+
     private fun recipients(n: Int) = (1..n).map { Recipient("r$it", "送り先$it", "r$it@example.jp") }
 
     private fun show(settings: Settings = Settings(), passwordSaved: Boolean = false) {
@@ -139,7 +169,7 @@ class SettingsScreenTest {
         val factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T =
-                SettingsViewModel(store, { resumes++ }, store, outbox, sender, Patterns.EMAIL_ADDRESS, {}) as T
+                SettingsViewModel(store, { resumes++ }, store, outbox, sender, unsent, Patterns.EMAIL_ADDRESS, {}) as T
         }
         vm = ViewModelProvider(vmStore, factory)[SettingsViewModel::class.java]
         rule.setContent {
@@ -590,5 +620,184 @@ class SettingsScreenTest {
             rule.waitForIdle()
         }
         assertEquals(0, resumes)
+    }
+
+    // ---- 未送信一覧・送信ログ(PLAN-4) ----
+
+    private val ctx get() = InstrumentationRegistry.getInstrumentation().targetContext
+
+    // 縮小画像の読み込み用に本物の JPEG を作る
+    private fun jpeg(name: String): java.io.File {
+        val f = java.io.File(ctx.cacheDir, "$name.jpg")
+        val bmp = android.graphics.Bitmap.createBitmap(400, 300, android.graphics.Bitmap.Config.ARGB_8888)
+        bmp.eraseColor(android.graphics.Color.GREEN)
+        f.outputStream().use { bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 80, it) }
+        return f
+    }
+
+    private fun item(
+        id: String,
+        state: ItemState,
+        phase: Phase = Phase.QUEUED,
+        reason: AttentionReason? = null,
+        name: String? = "送り先1",
+        file: java.io.File = jpeg(id),
+        at: Long = 1_792_406_100_000L,
+    ) = OutboxItemView(id, "r1", name, at, state, phase, reason, file)
+
+    private fun openUnsent() {
+        rule.onNodeWithText("未送信一覧").performScrollTo().performClick()
+        rule.waitForIdle()
+    }
+
+    private fun openLog() {
+        rule.onNodeWithText("送信ログ").performScrollTo().performClick()
+        rule.waitForIdle()
+    }
+
+    @Test fun unsentGroupsHeadersOrderAndLabels() {
+        unsent.itemsFlow.value = listOf(
+            item("w1", ItemState.WAITING),
+            item("w2", ItemState.WAITING, Phase.SENDING_BG),
+            item("a1", ItemState.ATTENTION, reason = AttentionReason.AUTH),
+            item("a2", ItemState.ATTENTION, reason = AttentionReason.PERMANENT),
+            item("a3", ItemState.ATTENTION, reason = AttentionReason.RETRY_EXPIRED),
+            item("a4", ItemState.ATTENTION, reason = AttentionReason.RECIPIENT_DELETED, name = null),
+        )
+        show()
+        openUnsent()
+        rule.onNodeWithText("送信待ち 2件").assertIsDisplayed()
+        rule.onNodeWithText("要確認 4件/10", useUnmergedTree = true).assertExists()
+        // 送信待ちの群が先、行の並びは窓口の順
+        val top = { id: String -> rule.onNodeWithTag(UnsentTags.row(id)).getUnclippedBoundsInRoot().top }
+        assertTrue(top("w1") < top("w2"))
+        rule.onNodeWithTag(UnsentTags.resend("w1")).assertIsEnabled()
+        rule.onNodeWithTag(UnsentTags.delete("w1")).assertIsEnabled()
+        // 送信中は待機中と表示して両方押せない
+        rule.onNodeWithTag(UnsentTags.resend("w2")).assertIsNotEnabled()
+        rule.onNodeWithTag(UnsentTags.delete("w2")).assertIsNotEnabled()
+        listOf("a1" to "ログイン失敗", "a2" to "送信拒否", "a3" to "24時間再試行しても送れませんでした", "a4" to "宛先が削除されました")
+            .forEach { (id, label) ->
+                rule.onNodeWithTag(UnsentTags.LIST).performScrollToNode(hasTestTag(UnsentTags.row(id)))
+                rule.onNode(hasText(label) and hasAnyAncestor(hasTestTag(UnsentTags.row(id))), useUnmergedTree = true).assertExists()
+            }
+        rule.onNode(hasText("（削除された宛先）") and hasAnyAncestor(hasTestTag(UnsentTags.row("a4"))), useUnmergedTree = true).assertExists()
+        rule.onNodeWithTag(UnsentTags.resend("a4")).assertIsNotEnabled()
+        rule.onNodeWithTag(UnsentTags.delete("a4")).assertIsEnabled()
+        rule.onNodeWithTag(UnsentTags.resend("a1")).assertIsEnabled()
+    }
+
+    @Test fun unsentRowLayoutAndMissingImage() {
+        unsent.itemsFlow.value = listOf(
+            item("a1", ItemState.ATTENTION, reason = AttentionReason.AUTH),
+            item("m1", ItemState.ATTENTION, reason = AttentionReason.AUTH, file = java.io.File(ctx.cacheDir, "none.jpg")),
+        )
+        show()
+        openUnsent()
+        // 送信待ちが空なら見出しも出さない
+        rule.onNodeWithText("送信待ち", substring = true).assertDoesNotExist()
+        rule.onNodeWithTag(UnsentTags.thumb("a1")).assertWidthIsEqualTo(96.dp).assertHeightIsEqualTo(96.dp)
+        val thumb = rule.onNodeWithTag(UnsentTags.thumb("a1")).getUnclippedBoundsInRoot()
+        val resend = rule.onNodeWithTag(UnsentTags.resend("a1")).getUnclippedBoundsInRoot()
+        val name = rule.onNode(hasText("送り先1") and hasAnyAncestor(hasTestTag(UnsentTags.row("a1"))), useUnmergedTree = true)
+            .getUnclippedBoundsInRoot()
+        // 画像が左、文字が右、ボタンは文字の下
+        assertTrue(thumb.right <= name.left)
+        assertTrue(resend.top > name.bottom)
+        // 画像が無い行は「画像なし」で、削除だけ押せる
+        rule.waitUntil(5_000) {
+            rule.onAllNodes(hasText("画像なし"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+        }
+        rule.onNodeWithTag(UnsentTags.resend("m1")).assertIsNotEnabled()
+        rule.onNodeWithTag(UnsentTags.delete("m1")).assertIsEnabled()
+        rule.onNodeWithTag(UnsentTags.resend("a1")).assertIsEnabled()
+    }
+
+    @Test fun unsentDeleteDialogAndCancel() {
+        unsent.itemsFlow.value = listOf(item("w1", ItemState.WAITING))
+        show()
+        openUnsent()
+        rule.onNodeWithTag(UnsentTags.delete("w1")).performClick()
+        rule.onNodeWithText("削除しますか？").assertIsDisplayed()
+        dialogButton("キャンセル").performClick()
+        rule.onNodeWithText("削除しますか？").assertDoesNotExist()
+        rule.onNodeWithTag(UnsentTags.delete("w1")).performClick()
+        systemBack()
+        rule.onNodeWithText("削除しますか？").assertDoesNotExist()
+        assertTrue(unsent.deleted.isEmpty())
+        rule.onNodeWithTag(UnsentTags.delete("w1")).performClick()
+        dialogButton("削除").performClick()
+        rule.waitUntil(5_000) { unsent.deleted.isNotEmpty() }
+        assertEquals(listOf("w1"), unsent.deleted)
+        // 両方の群が空になったら空の文言
+        rule.onNodeWithText("未送信の写真はありません").assertIsDisplayed()
+    }
+
+    @Test fun waitingSnackbarOnlyForWaiting() {
+        unsent.itemsFlow.value = listOf(item("a1", ItemState.ATTENTION, reason = AttentionReason.AUTH))
+        show()
+        openUnsent()
+        unsent.outcome = ResendOutcome.Started
+        rule.onNodeWithTag(UnsentTags.resend("a1")).performClick()
+        rule.waitForIdle()
+        rule.onNodeWithText("順番待ちです。しばらくお待ちください").assertDoesNotExist()
+        unsent.outcome = ResendOutcome.Waiting
+        rule.onNodeWithTag(UnsentTags.resend("a1")).performClick()
+        rule.waitUntil(5_000) {
+            rule.onAllNodesWithText("順番待ちです。しばらくお待ちください").fetchSemanticsNodes().isNotEmpty()
+        }
+        assertEquals(listOf("a1", "a1"), unsent.resent)
+    }
+
+    @Test fun emptyStates() {
+        show()
+        openUnsent()
+        rule.onNodeWithText("未送信の写真はありません").assertIsDisplayed()
+        rule.onNodeWithContentDescription("戻る").performClick()
+        openLog()
+        rule.onNodeWithText("送信ログはありません").assertIsDisplayed()
+    }
+
+    @Test fun sendLogMappingCodesAndTokyoTime() {
+        val original = java.util.TimeZone.getDefault()
+        java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("UTC"))
+        try {
+            // 2026-10-19 10:36:05 UTC = 19:36:05 東京
+            val t = java.time.Instant.parse("2026-10-19T10:36:05Z").toEpochMilli()
+            unsent.logFlow.value = SendLogResult.entries.mapIndexed { i, r ->
+                SendLogEntry(i.toLong() + 1, t, if (r == SendLogResult.DELETED_MANUAL) null else "送り先1", r, "NETWORK")
+            }
+            show()
+            openLog()
+            val texts = mapOf(
+                SendLogResult.SENT to "送信成功", SendLogResult.FAILED to "失敗",
+                SendLogResult.QUEUED_OFFLINE to "オフラインのため保留", SendLogResult.DELETED_MANUAL to "削除",
+                SendLogResult.DELETED_OVERFLOW to "削除（上限超過）", SendLogResult.RESEND_REQUESTED to "再送要求",
+                SendLogResult.TEST_OK to "テスト成功", SendLogResult.TEST_FAILED to "テスト失敗",
+            )
+            SendLogResult.entries.forEachIndexed { i, r ->
+                val id = i.toLong() + 1
+                rule.onNodeWithTag(SendLogTags.LIST).performScrollToIndex(i)
+                val inRow = { text: String ->
+                    rule.onNode(hasText(text) and hasAnyAncestor(hasTestTag(SendLogTags.row(id))), useUnmergedTree = true)
+                }
+                inRow(texts.getValue(r)).assertExists()
+                inRow("2026/10/19 19:36:05").assertExists()
+                if (r == SendLogResult.FAILED || r == SendLogResult.TEST_FAILED) inRow("NETWORK").assertExists()
+                else inRow("NETWORK").assertDoesNotExist()
+                if (r == SendLogResult.DELETED_MANUAL) inRow("（削除された宛先）").assertExists()
+            }
+        } finally {
+            java.util.TimeZone.setDefault(original)
+        }
+    }
+
+    @Test fun sendLogShowsFiftyRows() {
+        unsent.logFlow.value = (1..50).map { SendLogEntry(it.toLong(), it * 1000L, "送り先$it", SendLogResult.SENT, null) }
+        show()
+        openLog()
+        rule.onNodeWithTag(SendLogTags.LIST).performScrollToIndex(49)
+        rule.onNodeWithTag(SendLogTags.row(50)).assertExists()
+        rule.onNodeWithTag(SendLogTags.LIST).onChildren().fetchSemanticsNodes().let { assertTrue(it.isNotEmpty()) }
     }
 }
