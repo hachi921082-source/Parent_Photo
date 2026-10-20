@@ -1,6 +1,6 @@
 # Session Handoff
 
-Resume point for a fresh conversation. Updated 2026-10-19.
+Resume point for a fresh conversation. Updated 2026-10-20.
 
 ## Index
 1. Status
@@ -11,7 +11,7 @@ Resume point for a fresh conversation. Updated 2026-10-19.
 6. Working Notes
 
 ## 1. Status
-- Phase: implementation in progress. 7 of 10 features DONE and merged to `main` (`docs/plans/README.md` Status column).
+- Phase: implementation in progress. 8 of 10 features DONE and merged to `main` (`docs/plans/README.md` Status column).
 
 | Feature | State | Notes |
 |---|---|---|
@@ -22,12 +22,13 @@ Resume point for a fresh conversation. Updated 2026-10-19.
 | mail-composition-smtp | done | `ItemId = String` (matches `outbox_item.id` UUID); `SmtpSettingsSource` interface extracted, implemented by `SettingsRepository`; sendForeground checks recipient before offline (Q63) |
 | outbox-queue | done | `AttentionAlerter` interface extracted from `AttentionNotifier` (test seam); `ParentPhotoApp` builds `settingsRepository`/`outboxRepository` lazily, `appScope` (SupervisorJob + logging handler) runs observers and startup recovery; `createItem` awaits recovery; androidTest 73/73 x3 |
 | outbox-worker | done | `OutboxRunner` holds the run algorithm (`OutboxWorker` is thin; non-cancel exceptions -> `Result.retry()`); process `Mutex` prevents overlapping runs; `OutboxScheduler` (KEEP default; triggerNow REPLACE unless RUNNING, else `outbox-send-next`); `ParentPhotoApp` adds lazy `smtpSender` and `workScheduler`; startup recovery uses `triggerNow` when QUEUED rows exist (Q64); JVM 87/87, androidTest 82/82 x3 |
-| photo-send-flow | next | |
-| settings-screen, acceptance-verification | not started | |
+| photo-send-flow | done | ports in `ui/MainPorts.kt` over real repos (`MainViewModelFactory`); timers on `elapsedRealtime` (`DeadlineTimer`), re-checked in `onResume`; father text `lineHeight = 1.3.em` (agent choice to stop 2-line overlap; user may override); Q65 notice overlay 3000 ms; foreground failure -> `triggerNow` (Q68); `onCleared` during CancelWindow/Sending -> `requeueAbandoned` + `triggerNow` (Q69); JVM 139/139, androidTest 107/107 x3 |
+| settings-screen | next | |
+| acceptance-verification | not started | |
 
 - Agent set: lite (`designer-lite`, `developer-lite`, `reviewer-lite`). Declared in `CLAUDE.md`.
 - Git: local repo on `main`, no remote, nothing pushed. Clean working tree.
-- `docs/QA.md`: Q1-Q64 all resolved. Q1, Q2, Q8, Q10 are obsolete (GAS dropped).
+- `docs/QA.md`: Q1-Q69 all resolved. Q1, Q2, Q8, Q10 are obsolete (GAS dropped).
 
 ## 2. Where Things Are
 - `CLAUDE.md`: app summary, agent set, status line.
@@ -47,18 +48,8 @@ Resume point for a fresh conversation. Updated 2026-10-19.
 
 ## 4. Open Items
 Carry-overs that later features MUST handle (check them in the named feature's review):
-- photo-send-flow:
-  - reuse `ParentPhotoApp.smtpSender`, `.outboxRepository`, `.settingsRepository`, `.workScheduler` (do not construct new ones);
-  - Loading waits for `recoveryDone` (primary gate; `createItem` wait is the backup);
-  - keep the `setPreviewExists` update rules (outbox-queue PLAN-1 section 4);
-  - run the outbox-queue PLAN.md section 5 end-to-end check (enqueue, foreground success/failure, kill during undo window) with the real scheduler and an unreachable SMTP host (no real mail);
-  - outbox-worker PLAN-2 section 5 device checks 1 (QueuedNotice, "未送信 1件" badge after offline -> online) and 2 (kill during undo window and during foreground send);
-  - wire `CameraView` / `CameraController` / `CameraPermission` into the state machine;
-  - call `PreviewFiles.deleteAll()` at startup;
-  - call `NotificationPermissionRequester.requestIfNeeded` (via `ActivityResultLauncher`) after camera permission settles;
-  - badges are pill-shaped (`CircleShape`).
-- settings-screen: call `resumeAfterSetupFix()` after SMTP save success and test-send success; show Snackbar "順番待ちです。しばらくお待ちください" when `resendNow` returns `Waiting`; call `onRecipientDeleted` after `SettingsRepository.deleteRecipient`; outbox-worker PLAN-2 section 5 device checks 3 (wrong password -> fix and save) and 4 (rapid 今すぐ再送 taps).
-- Manual checks after photo-send-flow wiring: camera permission deny / never-ask-again, landscape capture, CameraX bind failure.
+- settings-screen: call `resumeAfterSetupFix()` after SMTP save success and test-send success; show Snackbar "順番待ちです。しばらくお待ちください" when `resendNow` returns `Waiting`; call `onRecipientDeleted` after `SettingsRepository.deleteRecipient`; put the settings UI at `TODO(settings-screen)` in `ui/MainScreen.kt` (back/close calls `vm.onSettingsClosed()`); outbox-worker PLAN-2 section 5 device checks 3 (wrong password -> fix and save) and 4 (rapid 今すぐ再送 taps).
+- Real-device manual checks (acceptance-verification): CameraX bind failure (not reproducible on emulator); Q69 swipe from recents with process alive -> worker attempts at once; real foreground success: "送りました！", 300 ms vibration + tone, vibration only in silent/vibrate; check 1 photo arrives and badge clears; readability of father screens. (Permission deny / never-ask-again and landscape capture already passed on emulator.)
 - Manual checks on an API 33+ device (only API 26 AVD exists; M06 is Android 16):
   - notification permission dialog appears once only, and not again after deny + restart;
   - no crash on `show` without permission;
@@ -80,7 +71,7 @@ Other open items:
 - Known minor: name length check counts UTF-16 units (emoji = 2); unused mailcap `pickFirsts` in packaging (harmless).
 
 ## 5. Next Step
-1. Implement photo-send-flow (`docs/plans/photo-send-flow/`, 3 sub-plans; pattern that worked for outbox-queue/outbox-worker: one developer-lite agent continued via SendMessage per sub-plan, then one reviewer-lite pass over the whole feature, fixes sent back to the same developer agent). Remaining order: photo-send-flow -> settings-screen -> acceptance-verification. Strictly sequential, one feature at a time, no parallel worktrees (user decision).
+1. Implement settings-screen (`docs/plans/settings-screen/`, 4 sub-plans; pattern that worked for outbox-queue/outbox-worker: one developer-lite agent continued via SendMessage per sub-plan, then one reviewer-lite pass over the whole feature, fixes sent back to the same developer agent). Remaining order: settings-screen -> acceptance-verification. Strictly sequential, one feature at a time, no parallel worktrees (user decision).
 2. Per feature, follow this cycle (dev-workflow section 7):
    1. `git checkout -b feature/<name>`.
    2. developer-lite implements.
