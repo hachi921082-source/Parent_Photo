@@ -3,10 +3,13 @@ package com.example.parentphoto.ui.settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.parentphoto.settings.ButtonSize
+import com.example.parentphoto.settings.Recipient
 import com.example.parentphoto.settings.Settings
 import com.example.parentphoto.settings.Validators
+import com.example.parentphoto.util.Constants
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -19,6 +22,7 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.regex.Pattern
 
 /** 設定画面が使う保存先の窓口。本物は SettingsRepository(SettingsViewModelFactory で包む)。 */
@@ -48,10 +52,13 @@ sealed interface SettingsEvent {
 
     /** 最初のエラー欄へスクロールしてフォーカスする。 */
     data class FocusField(val field: FormField) : SettingsEvent
+
+    /** 送り先ダイアログの最初のエラー欄へフォーカスする。 */
+    data class FocusRecipientField(val field: RecipientField) : SettingsEvent
 }
 
 /**
- * 隠し設定画面の ViewModel(settings-screen PLAN-1)。
+ * 隠し設定画面の ViewModel(settings-screen PLAN-1、送り先は PLAN-2)。
  * Activity 単位で1つ持ち、副画面への移動や画面の作り直しをまたいで未保存の入力を保つ。
  * 設定を閉じたら onClosed で入力を捨て、次に開いたとき onOpened で保存済みの値から読み直す。
  * パスワードの平文・メールアドレスはログに出さない。
@@ -59,6 +66,8 @@ sealed interface SettingsEvent {
 class SettingsViewModel(
     private val store: SettingsScreenStore,
     private val resumer: SetupResumer,
+    private val recipientStore: RecipientStore,
+    private val recipientOutbox: RecipientOutbox,
     private val emailPattern: Pattern,
     private val log: (String) -> Unit,
 ) : ViewModel() {
@@ -70,6 +79,22 @@ class SettingsViewModel(
     val buttonSize: StateFlow<ButtonSize?> = store.settings
         .map { it.buttonSize }
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    /** 送り先の一覧(登録順)。保存済みの値をそのまま映す。読み込み前は null。 */
+    val recipients: StateFlow<List<Recipient>?> = store.settings
+        .map { it.recipients }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    private val _recipientDialog = MutableStateFlow<RecipientDialogState?>(null)
+    /** 送り先の追加・編集ダイアログ。null なら閉じている。 */
+    val recipientDialog: StateFlow<RecipientDialogState?> = _recipientDialog.asStateFlow()
+
+    private val _deleteConfirm = MutableStateFlow<DeleteConfirmState?>(null)
+    /** 送り先削除の確認ダイアログ。null なら閉じている。 */
+    val deleteConfirm: StateFlow<DeleteConfirmState?> = _deleteConfirm.asStateFlow()
+
+    private var recipientSaving = false
+    private var deleteCounting = false
 
     private val _events = Channel<SettingsEvent>(Channel.BUFFERED)
     val events: Flow<SettingsEvent> = _events.receiveAsFlow()
@@ -97,7 +122,11 @@ class SettingsViewModel(
         loadJob?.cancel()
         loadJob = null
         saving = false
+        recipientSaving = false
+        deleteCounting = false
         _form.value = SmtpFormState()
+        _recipientDialog.value = null
+        _deleteConfirm.value = null
         while (_events.tryReceive().isSuccess) Unit
     }
 
@@ -203,6 +232,119 @@ class SettingsViewModel(
                 throw e
             } catch (e: Exception) {
                 log("setButtonSize failed: ${e.javaClass.simpleName}")
+            }
+        }
+    }
+
+    // ---- 送り先(PLAN-2) ----
+
+    /** 「追加」。6件に達していれば開かない(ボタンも無効)。 */
+    fun onAddRecipient() {
+        val list = recipients.value ?: return
+        if (list.size >= Constants.RECIPIENT_CAP || _recipientDialog.value != null) return
+        _recipientDialog.value = RecipientFormLogic.forAdd()
+    }
+
+    fun onEditRecipient(r: Recipient) {
+        if (_recipientDialog.value != null) return
+        _recipientDialog.value = RecipientFormLogic.forEdit(r)
+    }
+
+    fun onRecipientNameChange(value: String) {
+        _recipientDialog.update { it?.copy(name = value, errors = it.errors - RecipientField.NAME) }
+    }
+
+    fun onRecipientEmailChange(value: String) {
+        _recipientDialog.update {
+            it?.copy(email = RecipientFormLogic.limitEmail(value), errors = it.errors - RecipientField.EMAIL)
+        }
+    }
+
+    /** 外側タップ・戻る・キャンセル: 保存せず確認なしで閉じる。 */
+    fun onRecipientDialogDismiss() {
+        if (!recipientSaving) _recipientDialog.value = null
+    }
+
+    /**
+     * ダイアログの「保存」(常に押せる)。エラーがあれば欄の下に出してダイアログを開いたままにし、最初の欄へ移る。
+     * なければ即時保存して閉じる(成功の合図は出さない、Q57)。
+     */
+    fun onRecipientDialogSave() {
+        val d = _recipientDialog.value ?: return
+        if (recipientSaving) return
+        val errors = RecipientFormLogic.validate(d, emailPattern)
+        if (errors.isNotEmpty()) {
+            _recipientDialog.value = d.copy(errors = errors)
+            RecipientFormLogic.firstError(errors)?.let { _events.trySend(SettingsEvent.FocusRecipientField(it)) }
+            return
+        }
+        recipientSaving = true
+        val mySession = session
+        viewModelScope.launch {
+            try {
+                val name = d.name.trim()
+                val email = d.email.trim()
+                // 上限超過(追加)や削除済み(編集)で保存されなかったときも閉じる。一覧は保存済みの値を映す
+                if (d.editId == null) recipientStore.addRecipient(name, email)
+                else recipientStore.updateRecipient(d.editId, name, email)
+                if (mySession == session) _recipientDialog.value = null
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // 入力を残したまま「保存できませんでした」(Q70 と同じ扱い)
+                log("saveRecipient failed: ${e.javaClass.simpleName}")
+                if (mySession == session) _events.trySend(SettingsEvent.SaveFailed)
+            } finally {
+                if (mySession == session) recipientSaving = false
+            }
+        }
+    }
+
+    /** 削除アイコン: その送り先の未送信の枚数を数えてから確認ダイアログを出す。 */
+    fun onDeleteRecipient(r: Recipient) {
+        if (_deleteConfirm.value != null || deleteCounting) return
+        deleteCounting = true
+        val mySession = session
+        viewModelScope.launch {
+            val count = try {
+                recipientOutbox.countForRecipient(r.id)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                log("countForRecipient failed: ${e.javaClass.simpleName}")
+                0
+            }
+            if (mySession == session) {
+                deleteCounting = false
+                _deleteConfirm.value = DeleteConfirmState(r.id, count)
+            }
+        }
+    }
+
+    /** 確認ダイアログの「キャンセル」・外側タップ・戻る。 */
+    fun onDeleteDismiss() {
+        _deleteConfirm.value = null
+    }
+
+    /** 確認ダイアログの「削除」: 送り先を消し、その送り先の待機中の写真を要確認(宛先削除)へ移す(ds 7.5)。 */
+    fun onDeleteConfirmed() {
+        val c = _deleteConfirm.value ?: return
+        _deleteConfirm.value = null
+        viewModelScope.launch {
+            // 送り先だけ消えて写真が待機中に残らないよう、途中で設定を閉じても最後まで行う
+            withContext(NonCancellable) {
+                try {
+                    recipientStore.deleteRecipient(c.recipientId)
+                } catch (e: Exception) {
+                    log("deleteRecipient failed: ${e.javaClass.simpleName}")
+                    _events.trySend(SettingsEvent.SaveFailed)
+                    return@withContext
+                }
+                try {
+                    recipientOutbox.onRecipientDeleted(c.recipientId)
+                } catch (e: Exception) {
+                    log("onRecipientDeleted failed: ${e.javaClass.simpleName}")
+                }
             }
         }
     }
