@@ -57,9 +57,11 @@ class SettingsScreenTest {
     private class FakeStore(initial: Settings, var passwordSaved: Boolean) : SettingsScreenStore {
         val flow = MutableStateFlow(initial)
         val saves = mutableListOf<Pair<Settings, String?>>()
+        var failSave = false
         override val settings: Flow<Settings> = flow
         override suspend fun isPasswordSaved() = passwordSaved
         override suspend fun saveSmtp(senderName: String, user: String, host: String, port: Int, newPasswordOrNull: String?) {
+            if (failSave) throw java.io.IOException("disk")
             val s = flow.value.copy(senderName = senderName, smtpUser = user, smtpHost = host, smtpPort = port)
             saves += s to newPasswordOrNull
             flow.value = s
@@ -171,6 +173,19 @@ class SettingsScreenTest {
         // 保存後は clean、パスワードは保存済み表示
         save().assertIsNotEnabled()
         rule.onNodeWithText(text(com.example.parentphoto.R.string.password_saved_mask)).assertExists()
+    }
+
+    @Test fun saveFailureKeepsInputAndShowsSnackbar() {
+        show(Settings(smtpUser = "chichi@example.jp"), passwordSaved = true)
+        store.failSave = true
+        type(FormField.SENDER_NAME, "お父さん")
+        save().performScrollTo().performClick()
+        rule.waitUntil(5_000) { rule.onAllNodesWithText("保存できませんでした").fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithText("保存できませんでした").assertIsDisplayed()
+        rule.onNodeWithText("お父さん").assertExists()
+        save().assertIsEnabled()
+        assertTrue(store.saves.isEmpty())
+        assertEquals(0, resumes)
     }
 
     @Test fun newPasswordToggleAndWhitespace() {
