@@ -57,6 +57,7 @@ fun TestSendSection(
     recipients: List<Recipient>,
     selected: Recipient?,
     hintRes: Int?,
+    canSend: Boolean,
     sending: Boolean,
     onSelect: (Recipient) -> Unit,
     onSend: () -> Unit,
@@ -100,7 +101,7 @@ fun TestSendSection(
     }
     Button(
         onClick = onSend,
-        enabled = hintRes == null && selected != null && !sending,
+        enabled = canSend && selected != null && !sending,
         modifier = Modifier.fillMaxWidth().testTag(TestSendTags.BUTTON),
     ) { Text(stringResource(R.string.button_test_send)) }
     if (hintRes != null) {
