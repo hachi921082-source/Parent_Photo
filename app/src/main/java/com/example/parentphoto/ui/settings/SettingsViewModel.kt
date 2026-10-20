@@ -2,9 +2,12 @@ package com.example.parentphoto.ui.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.parentphoto.outbox.ResendOutcome
+import com.example.parentphoto.outbox.SendLogEntry
 import com.example.parentphoto.settings.ButtonSize
 import com.example.parentphoto.settings.Recipient
 import com.example.parentphoto.mail.FailureKind
+import com.example.parentphoto.mail.ItemId
 import com.example.parentphoto.mail.MailCode
 import com.example.parentphoto.mail.MailResult
 import com.example.parentphoto.settings.Settings
@@ -63,7 +66,7 @@ sealed interface SettingsEvent {
 }
 
 /**
- * 隠し設定画面の ViewModel(settings-screen PLAN-1、送り先は PLAN-2、テスト送信は PLAN-3)。
+ * 隠し設定画面の ViewModel(settings-screen PLAN-1、送り先は PLAN-2、テスト送信は PLAN-3、未送信一覧・送信ログは PLAN-4)。
  * Activity 単位で1つ持ち、副画面への移動や画面の作り直しをまたいで未保存の入力を保つ。
  * 設定を閉じたら onClosed で入力を捨て、次に開いたとき onOpened で保存済みの値から読み直す。
  * パスワードの平文・メールアドレスはログに出さない。
@@ -74,6 +77,7 @@ class SettingsViewModel(
     private val recipientStore: RecipientStore,
     private val recipientOutbox: RecipientOutbox,
     private val testSender: TestMailSender,
+    private val unsentOutbox: UnsentOutbox,
     private val emailPattern: Pattern,
     private val log: (String) -> Unit,
 ) : ViewModel() {
@@ -116,6 +120,23 @@ class SettingsViewModel(
     /** テスト送信の進行ダイアログ・結果ダイアログ。 */
     val testSend: StateFlow<TestSendPhase> = _testSend.asStateFlow()
 
+    /** 未送信一覧(2つの群)。画面を見ている間だけ DB を監視する。読み込み前は null。 */
+    val unsent: StateFlow<UnsentGroups?> = unsentOutbox.items
+        .map { UnsentLogic.group(it) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /** 送信ログ(新しい順に最大50件)。読み込み前は null。 */
+    val sendLog: StateFlow<List<SendLogEntry>?> = unsentOutbox.sendLog
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    private val _unsentDeleteId = MutableStateFlow<ItemId?>(null)
+    /** 未送信の項目の削除確認。null なら閉じている。 */
+    val unsentDeleteId: StateFlow<ItemId?> = _unsentDeleteId.asStateFlow()
+
+    // 未送信一覧の Snackbar(「順番待ちです」)。副画面ごとに SnackbarHost を持つため合図を分ける
+    private val _unsentEvents = Channel<Unit>(Channel.BUFFERED)
+    val unsentWaitingEvents: Flow<Unit> = _unsentEvents.receiveAsFlow()
+
     private var recipientSaving = false
     private var deleteCounting = false
 
@@ -151,6 +172,8 @@ class SettingsViewModel(
         _recipientDialog.value = null
         _deleteConfirm.value = null
         selectedTestId.value = null
+        _unsentDeleteId.value = null
+        while (_unsentEvents.tryReceive().isSuccess) Unit
         // 送信中のテストは止めない(結果は送信ログに残る)。画面の状態だけ戻す
         _testSend.value = TestSendPhase.Idle
         while (_events.tryReceive().isSuccess) Unit
@@ -418,6 +441,52 @@ class SettingsViewModel(
     /** 結果ダイアログの「OK」。外側タップ・戻るでは閉じない。 */
     fun onTestResultOk() {
         if (_testSend.value is TestSendPhase.Done) _testSend.value = TestSendPhase.Idle
+    }
+
+    // ---- 未送信一覧(PLAN-4) ----
+
+    /**
+     * 「今すぐ再送」(ds 7.5 / 9.6)。枠が空いていない(Waiting)ときだけ「順番待ちです。しばらくお待ちください」。
+     * 始まったときは何も出さない(行が待機中になる)。連打の扱いは未送信キューとワーカー側に任せる。
+     */
+    fun onResendNow(itemId: ItemId) {
+        val mySession = session
+        viewModelScope.launch {
+            val outcome = try {
+                unsentOutbox.resendNow(itemId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                log("resendNow failed: ${e.javaClass.simpleName}")
+                return@launch
+            }
+            if (outcome == ResendOutcome.Waiting && mySession == session) _unsentEvents.trySend(Unit)
+        }
+    }
+
+    /** 行の「削除」: 確認ダイアログを出す。 */
+    fun onDeleteUnsent(itemId: ItemId) {
+        if (_unsentDeleteId.value == null) _unsentDeleteId.value = itemId
+    }
+
+    /** 確認ダイアログの「キャンセル」・外側タップ・戻る。 */
+    fun onDeleteUnsentDismiss() {
+        _unsentDeleteId.value = null
+    }
+
+    /** 確認ダイアログの「削除」: 行と写真を消して DELETED_MANUAL を記録する(ds 7.8、本体は未送信キュー)。 */
+    fun onDeleteUnsentConfirmed() {
+        val id = _unsentDeleteId.value ?: return
+        _unsentDeleteId.value = null
+        viewModelScope.launch {
+            withContext(NonCancellable) {
+                try {
+                    unsentOutbox.deleteManual(id)
+                } catch (e: Exception) {
+                    log("deleteManual failed: ${e.javaClass.simpleName}")
+                }
+            }
+        }
     }
 
     // 入力を反映し、その欄のエラー表示を消す(次の保存で検証し直す)
