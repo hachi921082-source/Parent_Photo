@@ -9,8 +9,13 @@ import com.example.parentphoto.ParentPhotoApp
 import com.example.parentphoto.camera.CameraController
 import com.example.parentphoto.camera.CameraPermission
 import com.example.parentphoto.camera.PreviewFiles
+import com.example.parentphoto.mail.ItemId
+import com.example.parentphoto.mail.MailResult
+import com.example.parentphoto.mail.SmtpSender
+import com.example.parentphoto.notify.Feedback
 import com.example.parentphoto.notify.NotificationPermissionRequester
 import com.example.parentphoto.outbox.OutboxRepository
+import com.example.parentphoto.outbox.Phase
 import com.example.parentphoto.settings.Settings
 import com.example.parentphoto.settings.SettingsRepository
 import com.example.parentphoto.settings.SetupState
@@ -28,13 +33,15 @@ class MainViewModelFactory(private val app: ParentPhotoApp) : ViewModelProvider.
         require(modelClass.isAssignableFrom(MainViewModel::class.java)) { "unknown ViewModel: $modelClass" }
         val vm = MainViewModel(
             settingsSource = RepositorySettings(app.settingsRepository),
-            outbox = RepositoryOutbox(app.outboxRepository),
+            outbox = RepositoryOutbox(app.outboxRepository, app.smtpSender),
             capturer = ControllerCapturer(app.cameraController, app.previewFiles),
             cameraPermission = ContextCameraPermission(app),
             notificationPermission = NotificationPermissionRequester(app, app.settingsRepository),
             elapsedRealtime = SystemClock::elapsedRealtime,
             wallClock = System::currentTimeMillis,
             cameraLog = { Log.e(TAG_CAMERA, it) },
+            feedback = Feedback(app, app.appScope),
+            flowLog = { Log.w(TAG_FLOW, it) },
         )
         @Suppress("UNCHECKED_CAST")
         return vm as T
@@ -42,6 +49,7 @@ class MainViewModelFactory(private val app: ParentPhotoApp) : ViewModelProvider.
 
     private companion object {
         const val TAG_CAMERA = "ParentPhoto/Camera"
+        const val TAG_FLOW = "ParentPhoto/Flow"
     }
 }
 
@@ -55,13 +63,31 @@ private class RepositorySettings(private val repo: SettingsRepository) : SendFlo
     }
 }
 
-/** OutboxRepository のうち画面が使う部分 */
-private class RepositoryOutbox(private val repo: OutboxRepository) : SendFlowOutbox {
+/** OutboxRepository と前面送信(SmtpSender)のうち画面が使う部分 */
+private class RepositoryOutbox(
+    private val repo: OutboxRepository,
+    private val sender: SmtpSender,
+) : SendFlowOutbox {
     override val activeCount: Flow<Int> = repo.activeCount
     override val attentionCount: Flow<Int> = repo.attentionCount
     override val recoveryDone: Flow<Boolean> = repo.recoveryDone
 
     override fun setPreviewExists(exists: Boolean) = repo.setPreviewExists(exists)
+
+    override suspend fun createItem(recipientId: String, capturedAtMillis: Long, previewFile: File): ItemId =
+        repo.createItem(recipientId, capturedAtMillis, previewFile)
+
+    override suspend fun deleteItem(itemId: ItemId) = repo.deleteItem(itemId)
+
+    override suspend fun startForegroundSend(itemId: ItemId) = repo.setPhase(itemId, Phase.SENDING_FG)
+
+    // 設定の読み出しとパスワードの復号を含むので IO で行う
+    override suspend fun sendForeground(itemId: ItemId): MailResult =
+        withContext(Dispatchers.IO) { sender.sendForeground(itemId) }
+
+    override suspend fun markSent(itemId: ItemId) = repo.markSent(itemId)
+
+    override suspend fun markQueued(itemId: ItemId, result: MailResult) = repo.markQueued(itemId, result)
 }
 
 /** CameraController で撮影する。束ね込みは CameraView(画面側)が行う */
