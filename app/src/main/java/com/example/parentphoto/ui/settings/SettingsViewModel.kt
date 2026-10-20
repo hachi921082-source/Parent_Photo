@@ -111,10 +111,13 @@ class SettingsViewModel(
         list?.let { TestSendLogic.selected(it, id) }
     }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
-    /** 保存済みのメール設定が使えるか(ds 8.3 の SetupRequired でない)。読み込み前は false。 */
-    val savedSetupValid: StateFlow<Boolean> = store.settings
-        .map { s -> !SetupState.isSetupRequired(s, store.isPasswordSaved(), emailPattern) }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    /**
+     * 保存済みのメール設定が使えるか(ds 8.3 の SetupRequired でない)。読み込み前は null
+     * (null の間は案内を出さず、テスト送信も押せない。開いた直後に案内が一瞬出るのを避ける)。
+     */
+    val savedSetupValid: StateFlow<Boolean?> = store.settings
+        .map<Settings, Boolean?> { s -> !SetupState.isSetupRequired(s, store.isPasswordSaved(), emailPattern) }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     private val _testSend = MutableStateFlow<TestSendPhase>(TestSendPhase.Idle)
     /** テスト送信の進行ダイアログ・結果ダイアログ。 */
@@ -379,6 +382,7 @@ class SettingsViewModel(
     fun onDeleteConfirmed() {
         val c = _deleteConfirm.value ?: return
         _deleteConfirm.value = null
+        val mySession = session
         viewModelScope.launch {
             // 送り先だけ消えて写真が待機中に残らないよう、途中で設定を閉じても最後まで行う
             withContext(NonCancellable) {
@@ -386,7 +390,8 @@ class SettingsViewModel(
                     recipientStore.deleteRecipient(c.recipientId)
                 } catch (e: Exception) {
                     log("deleteRecipient failed: ${e.javaClass.simpleName}")
-                    _events.trySend(SettingsEvent.SaveFailed)
+                    // 設定を閉じた後の失敗を、次に開いた回の画面に出さない
+                    if (mySession == session) _events.trySend(SettingsEvent.SaveFailed)
                     return@withContext
                 }
                 try {
@@ -411,7 +416,7 @@ class SettingsViewModel(
     fun onTestSend() {
         if (_testSend.value != TestSendPhase.Idle) return
         val list = recipients.value ?: return
-        if (TestSendLogic.hint(list.size, savedSetupValid.value, _form.value.dirty) != null) return
+        if (!TestSendLogic.canSend(list.size, savedSetupValid.value, _form.value.dirty)) return
         val r = testRecipient.value ?: return
         _testSend.value = TestSendPhase.Sending
         val mySession = session
