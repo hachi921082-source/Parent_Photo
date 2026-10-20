@@ -4,13 +4,17 @@ import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.parentphoto.ParentPhotoApp
 import com.example.parentphoto.camera.CameraController
 import com.example.parentphoto.camera.CameraView
+import com.example.parentphoto.ui.settings.SettingsNavHost
+import com.example.parentphoto.ui.settings.SettingsViewModel
+import com.example.parentphoto.ui.settings.SettingsViewModelFactory
 import com.example.parentphoto.ui.theme.FatherTheme
 
 /**
@@ -22,10 +26,11 @@ import com.example.parentphoto.ui.theme.FatherTheme
 @Composable
 fun MainScreen(model: MainUiModel, viewModel: MainViewModel, cameraController: CameraController) {
     if (model.settingsOpen) {
-        // 設定から戻ると元の状態に戻り、優先順位を評価し直す
-        BackHandler(enabled = true) { viewModel.onSettingsClosed() }
-        // TODO(settings-screen): 隠し設定画面をここに置く
-        Box(Modifier.fillMaxSize())
+        // 隠し設定(settings-screen)。ViewModel は Activity 単位で、閉じるたびに入力を捨てる。
+        // 戻る操作は設定画面側が受け、閉じると元の状態に戻り優先順位を評価し直す
+        val app = LocalContext.current.applicationContext as ParentPhotoApp
+        val settingsViewModel: SettingsViewModel = viewModel(factory = SettingsViewModelFactory(app))
+        SettingsNavHost(viewModel = settingsViewModel, onClose = viewModel::onSettingsClosed)
         return
     }
 
