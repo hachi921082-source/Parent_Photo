@@ -243,7 +243,8 @@ class MainViewModel(
 
     /** 設定アイコンの3秒長押し。許された状態からだけ設定ルートを開く */
     fun onSettingsLongPress() {
-        if (model.value.settingsOpen || !state.allowsSettings) return
+        // 項目作成中(Preview のまま)は開かない。開くと作成後に設定の裏で猶予が進んでしまう
+        if (model.value.settingsOpen || creatingItem || !state.allowsSettings) return
         model.update { it.copy(settingsOpen = true) }
     }
 
@@ -320,6 +321,12 @@ class MainViewModel(
     override fun onCleared() {
         // 画面が終わると写真は捨てられるので、枠の予約も外す
         outbox.setPreviewExists(false)
+        // 猶予中・送信中に閉じられたら(プロセスは残っている)、強制終了と同じく裏ですぐ送る(Q69)
+        when (val s = state) {
+            is UiState.CancelWindow -> outbox.requeueAbandoned(s.itemId)
+            is UiState.Sending -> outbox.requeueAbandoned(s.itemId)
+            else -> Unit
+        }
     }
 
     // ---- 内部 ----
