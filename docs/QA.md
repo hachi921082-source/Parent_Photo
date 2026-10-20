@@ -418,3 +418,22 @@ Background: a self-review found places where the implementer would have had to c
 - Context: a kill during the worker's send leaves WorkManager's ~15 min backoff in place; recovery's KEEP enqueue does not shorten it.
 - Options: A accept as spec (recommended by the agent); B `triggerNow` only when recovery requeued rows; C `triggerNow` on every startup.
 - Answer: C. Startup recovery calls `triggerNow` (REPLACE if not RUNNING, else follow-up `outbox-send-next`) instead of `enqueueDefault` whenever any QUEUED row exists after recovery, so every app open resets the backoff and retries immediately. Accepted trade-off: more frequent retries. CONFIRMED by the user.
+
+### Q65. Recipient tap in Preview while active count is 5 (race) [RESOLVED]
+- Context: ds 2.4 says "reject with OutboxFull notice" but not what happens to the photo. Rare race only (Preview reserves a slot).
+- Answer: keep Preview and the photo; overlay the OutboxFull notice text for 3000 ms; recipient buttons work again once the count drops. No item is created. CONFIRMED by the user.
+
+### Q66. Background while the camera permission dialog is shown [RESOLVED]
+- Answer: blank Loading screen behind the system dialog (no camera frame). CONFIRMED by the user.
+
+### Q67. Father-facing message when createItem fails for a non-full reason [RESOLVED]
+- Context: e.g. disk full while copying the photo into the outbox (very rare).
+- Answer: no message. Preview and the photo stay; tapping the recipient again retries. Logcat only. CONFIRMED by the user.
+
+### Q68. Foreground failure while a worker backoff is pending [RESOLVED]
+- Context: `enqueueDefault` (KEEP) kept the existing ~15 min+ backoff, so a new failed photo waited even after the network returned.
+- Answer: a failed/offline foreground send calls `triggerNow` (REPLACE if not RUNNING, else follow-up), resetting the backoff, same idea as Q64. CONFIRMED by the user.
+
+### Q69. Task swiped away during the undo window or a foreground send (process alive) [RESOLVED]
+- Context: ViewModel cleared, flow coroutines cancelled, item stuck in CANCEL_WINDOW/SENDING_FG until next cold start.
+- Answer: treat like a kill (ds 7.6): on the application scope set the item to QUEUED and call `triggerNow`, so the worker sends it right away. A swipe during the undo window still sends the photo. CONFIRMED by the user.

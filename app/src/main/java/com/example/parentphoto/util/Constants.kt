@@ -8,6 +8,8 @@ object Constants {
     const val QUEUED_NOTICE_MS = 2000L
     const val FG_SEND_TIMEOUT_MS = 60_000L
     const val CAPTURE_FAILURE_MESSAGE_MS = 3000L
+    // Preview 中に満杯で送り先を拒否した時の案内の表示時間(Q65)
+    const val OUTBOX_FULL_NOTICE_MS = 3000L
 
     // SMTPタイムアウト(ミリ秒)
     const val SMTP_CONNECT_TIMEOUT_MS = 15_000

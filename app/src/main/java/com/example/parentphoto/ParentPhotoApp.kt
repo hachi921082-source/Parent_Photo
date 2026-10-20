@@ -5,6 +5,8 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.util.Log
 import androidx.work.WorkManager
+import com.example.parentphoto.camera.CameraController
+import com.example.parentphoto.camera.PreviewFiles
 import com.example.parentphoto.mail.ConnectivityChecker
 import com.example.parentphoto.mail.MailComposer
 import com.example.parentphoto.mail.SmtpSender
@@ -60,6 +62,10 @@ class ParentPhotoApp : Application() {
             sendLog = outboxRepository,
         )
     }
+
+    // 撮影中の一時ファイル(cache/preview.jpg など)と撮影の窓口。画面の作り直しをまたいで同じものを使う
+    val previewFiles: PreviewFiles by lazy { PreviewFiles(cacheDir) }
+    val cameraController: CameraController by lazy { CameraController(this, previewFiles) }
 
     override fun onCreate() {
         super.onCreate()

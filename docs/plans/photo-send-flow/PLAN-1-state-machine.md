@@ -11,6 +11,7 @@ Source: ds 2.1-2.4, 4.2. Package `ui/`.
 6. Back handling
 7. Active slot reservation
 8. Tests
+9. Implementation notes
 
 ## 1. UiState
 Sealed interface: `Loading`, `PermissionDenied`, `SetupRequired`, `Camera`, `OutboxFull`, `Capturing`, `Preview(capturedAtMillis)`, `CancelWindow(itemId, secondsLeft)`, `Sending(itemId)`, `Sent`, `QueuedNotice`. Settings is a separate navigation route (back returns to the previous main state and re-evaluates precedence). Extra non-state fields: `captureFailureMessageVisible: Boolean`, `previewExists`, badge counts, recipients list, button size.
@@ -50,3 +51,15 @@ Undo countdown, foreground send (60 s cap), Sent and QueuedNotice 2 s timers and
 
 ## 8. Tests
 JVM tests with fake dependencies and a test dispatcher/clock: precedence matrix; each transition row; failure message hides at exactly 3000 ms and a second failure restarts the timer; precedence re-evaluated on every resume (permission revoked in background -> PermissionDenied, no permission request; granted via system settings -> Camera); Preview kept across Settings; timers continue when "backgrounded" (clock based); defensive reject at active 5.
+
+
+## 9. Implementation notes
+- Files (`ui/`): `UiState.kt` (states + `MainUiModel`; `isPrecedenceOwned`, `blocksBack`, `allowsSettings`), `MainPorts.kt` (`SendFlowSettings`, `SendFlowOutbox`, `PhotoCapturer`, `CameraPermissionGate`), `MainViewModel.kt` (+ `DeadlineTimer`), `MainViewModelFactory.kt` (real adapters), `MainScreen.kt` (settings route + `BackHandler`, screens are `TODO(PLAN-2)`), `MainActivity.kt` (ON_RESUME -> `onResume`, permission launchers).
+- The "fakes" of this plan are thin ports over the real code: `SettingsRepository` (+ `SetupState`, password read on IO), `OutboxRepository` (`activeCount`, `attentionCount`, `recoveryDone`, `setPreviewExists`), `CameraController`/`PreviewFiles` (now `ParentPhotoApp.cameraController` / `.previewFiles`), `CameraPermission`, `NotificationPermissionRequester`. JVM tests use fakes of the ports.
+- `UiState.Preview` also carries the preview `file`.
+- Settings route = `MainUiModel.settingsOpen` (no navigation library). The photo is kept in the ViewModel while SetupRequired is shown after Settings; any later precedence run returns that Preview once setup is valid.
+- While the camera permission dialog is open the state stays Loading (blank); `cameraPermissionRequest` asks the Activity to launch it, `markRequested` is called when the request is raised.
+- Notification permission: `requestIfNeeded` runs once per ViewModel the first time Camera/OutboxFull is shown (not while Settings is open).
+- Cold-start file deletion (`PreviewFiles.deleteAll()`) and `setPreviewExists(false)` run in the ViewModel `init`; `onCleared` sets `setPreviewExists(false)`.
+- Timers: `DeadlineTimer` (deadline on `elapsedRealtime`, `delay` for the wait, `onResume` fires overdue timers or re-arms with the remaining time). PLAN-3 reuses it.
+- Defensive reject at active 5 (recipient tap): no item, state stays Preview; how the OutboxFull guidance is shown there is an open question (see `TODO(PLAN-3/Q)`).

@@ -62,8 +62,8 @@ Indexes: `state`, `recipientId`. Enums are stored by name through explicit `@Typ
 - `markQueued(itemId, result)`: dispatch on `result`:
   | result | effect |
   |---|---|
-  | `Offline` | phase QUEUED, log `QUEUED_OFFLINE`, `scheduler.enqueueDefault()` |
-  | `Failure(TRANSIENT, code)` | phase QUEUED, log `FAILED(code)`, `scheduler.enqueueDefault()` |
+  | `Offline` | phase QUEUED, log `QUEUED_OFFLINE`, `scheduler.triggerNow()` (Q68) |
+  | `Failure(TRANSIENT, code)` | phase QUEUED, log `FAILED(code)`, `scheduler.triggerNow()` (Q68) |
   | `Failure(AUTH)` | PLAN-2 `moveToAttention([id], AUTH)`, log `FAILED(AUTH)` |
   | `Failure(PERMANENT, code)` | PLAN-2 `moveToAttention([id], PERMANENT)`, log `FAILED(code)` |
   | `RecipientMissing` | PLAN-2 `moveToAttention([id], RECIPIENT_DELETED)`, no FAILED line |

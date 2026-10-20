@@ -38,7 +38,7 @@ class OutboxScheduler(private val wm: WorkManager) : WorkScheduler {
 ## 3. Trigger wiring (who calls what; all rows from ds 7.4 "Enqueue when")
 | Event | Caller | Scheduler call |
 |---|---|---|
-| Item becomes QUEUED after failed/offline foreground send | `OutboxRepository.markQueued` | `enqueueDefault()` |
+| Item becomes QUEUED after failed/offline foreground send | `OutboxRepository.markQueued` | `triggerNow()` (Q68; resets a pending backoff) |
 | Startup recovery found QUEUED items | `OutboxRepository` recovery | `triggerNow()` (Q64; resets the backoff at every app start) |
 | SMTP settings saved (resumes AUTH / PERMANENT / RETRY_EXPIRED items) | settings-screen -> `resumeAfterSetupFix()` | `triggerNow()` via `promote()` when something was promoted; `enqueueDefault()` otherwise if QUEUED exist |
 | Successful test send | settings-screen PLAN-3 -> `resumeAfterSetupFix()` | same as above |
