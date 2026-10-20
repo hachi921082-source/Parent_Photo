@@ -2,10 +2,15 @@ package com.example.parentphoto.ui.settings
 
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import com.example.parentphoto.R
+import com.example.parentphoto.mail.FailureKind
+import com.example.parentphoto.mail.MailCode
+import com.example.parentphoto.mail.MailResult
 import com.example.parentphoto.settings.ButtonSize
 import com.example.parentphoto.settings.Recipient
 import com.example.parentphoto.settings.Settings
 import com.example.parentphoto.settings.ValidationError
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -91,9 +96,17 @@ class SettingsViewModelTest {
         }
     }
 
+    // テスト送信の偽物。gate を完了させるまで送信中のまま待つ
+    private val sentTo = mutableListOf<String>()
+    private var gate = CompletableDeferred<MailResult>()
+    private val sender = TestMailSender { r ->
+        sentTo += r.id
+        gate.await()
+    }
+
     private fun vm(store: FakeStore): SettingsViewModel {
         lastStore = store
-        return SettingsViewModel(store, { resumes++ }, store, outbox, pat, { logs += it }).also { it.onOpened() }
+        return SettingsViewModel(store, { resumes++ }, store, outbox, sender, pat, { logs += it }).also { it.onOpened() }
     }
 
     private fun recipients(n: Int) = (1..n).map { Recipient("r$it", "送り先$it", "r$it@example.jp") }
@@ -441,6 +454,105 @@ class SettingsViewModelTest {
         assertEquals(ImeAction.Next, RecipientFormLogic.keyboardOptions(RecipientField.NAME).imeAction)
         assertEquals(KeyboardType.Email, RecipientFormLogic.keyboardOptions(RecipientField.EMAIL).keyboardType)
         assertEquals(ImeAction.Done, RecipientFormLogic.keyboardOptions(RecipientField.EMAIL).imeAction)
+    }
+
+    // ---- テスト送信(PLAN-3) ----
+
+    private fun validStore(n: Int = 2) = FakeStore(Settings(smtpUser = "a@b.jp", recipients = recipients(n)), true)
+
+    @Test fun `案内の優先順位、重なったときは上が勝つ`() {
+        assertEquals(R.string.hint_no_recipients, TestSendLogic.hint(0, savedSetupValid = false, formDirty = true))
+        assertEquals(R.string.hint_no_recipients, TestSendLogic.hint(0, savedSetupValid = true, formDirty = true))
+        assertEquals(R.string.hint_save_mail_first, TestSendLogic.hint(1, savedSetupValid = false, formDirty = true))
+        assertEquals(R.string.hint_save_first, TestSendLogic.hint(1, savedSetupValid = true, formDirty = true))
+        assertNull(TestSendLogic.hint(1, savedSetupValid = true, formDirty = false))
+    }
+
+    @Test fun `保存済み設定の判定はパスワードとアドレスで変わる`() {
+        assertFalse(vm(FakeStore(Settings(smtpUser = "a@b.jp"), false)).savedSetupValid.value)
+        assertFalse(vm(FakeStore(Settings(smtpUser = "bad"), true)).savedSetupValid.value)
+        assertTrue(vm(FakeStore(Settings(smtpUser = "a@b.jp"), true)).savedSetupValid.value)
+    }
+
+    @Test fun `保存すると保存済み設定が有効になる`() {
+        val store = FakeStore(Settings(recipients = recipients(1)), false)
+        val v = vm(store)
+        assertFalse(v.savedSetupValid.value)
+        v.onSmtpUserChange("a@b.jp")
+        v.onPasswordChange(pw16)
+        v.onSave()
+        assertTrue(v.savedSetupValid.value)
+    }
+
+    @Test fun `先頭が選ばれ、選んだ送り先が消えたら残りの先頭になる`() {
+        val store = validStore(3)
+        val v = vm(store)
+        assertEquals("r1", v.testRecipient.value!!.id)
+        v.onTestRecipientSelected(store.flow.value.recipients[2])
+        assertEquals("r3", v.testRecipient.value!!.id)
+        v.onDeleteRecipient(store.flow.value.recipients[2])
+        v.onDeleteConfirmed()
+        assertEquals("r1", v.testRecipient.value!!.id)
+        v.onDeleteRecipient(store.flow.value.recipients[0])
+        v.onDeleteConfirmed()
+        assertEquals("r2", v.testRecipient.value!!.id)
+    }
+
+    @Test fun `成功で送信できました、再開を1回呼び、OKで閉じる`() {
+        val store = validStore()
+        val v = vm(store)
+        v.onTestRecipientSelected(store.flow.value.recipients[1])
+        v.onTestSend()
+        assertEquals(TestSendPhase.Sending, v.testSend.value)
+        // 送信中はもう一度押しても送らない
+        v.onTestSend()
+        assertEquals(listOf("r2"), sentTo)
+        gate.complete(MailResult.Success)
+        assertEquals(TestSendPhase.Done(TestSendResult(R.string.test_result_ok)), v.testSend.value)
+        assertEquals(1, resumes)
+        v.onTestResultOk()
+        assertEquals(TestSendPhase.Idle, v.testSend.value)
+    }
+
+    @Test fun `失敗では再開を呼ばない`() {
+        val v = vm(validStore())
+        v.onTestSend()
+        gate.complete(MailResult.Failure(FailureKind.AUTH, MailCode.AUTH, null, null, 535))
+        assertEquals(TestSendPhase.Done(TestSendResult(R.string.test_result_auth)), v.testSend.value)
+        assertEquals(0, resumes)
+    }
+
+    @Test fun `案内が出ているときは送らない`() {
+        val noRecipients = vm(FakeStore(Settings(smtpUser = "a@b.jp"), true))
+        noRecipients.onTestSend()
+        val invalidSaved = vm(FakeStore(Settings(recipients = recipients(1)), false))
+        invalidSaved.onTestSend()
+        val dirty = vm(validStore())
+        dirty.onSenderNameChange("父")
+        dirty.onTestSend()
+        assertTrue(sentTo.isEmpty())
+        assertEquals(TestSendPhase.Idle, dirty.testSend.value)
+    }
+
+    @Test fun `結果の文言の対応`() {
+        fun f(code: MailCode) = MailResult.Failure(FailureKind.TRANSIENT, code, null, null, null)
+        assertEquals(TestSendResult(R.string.test_result_ok), TestSendLogic.resultOf(MailResult.Success))
+        assertEquals(TestSendResult(R.string.test_result_auth), TestSendLogic.resultOf(f(MailCode.AUTH)))
+        assertEquals(TestSendResult(R.string.test_result_network), TestSendLogic.resultOf(f(MailCode.NETWORK)))
+        assertEquals(TestSendResult(R.string.test_result_network), TestSendLogic.resultOf(f(MailCode.TIMEOUT)))
+        assertEquals(TestSendResult(R.string.test_result_rejected), TestSendLogic.resultOf(f(MailCode.REJECTED)))
+        assertEquals(TestSendResult(R.string.test_result_other, "OTHER"), TestSendLogic.resultOf(f(MailCode.OTHER)))
+    }
+
+    @Test fun `閉じると選択と結果ダイアログを戻す`() {
+        val store = validStore()
+        val v = vm(store)
+        v.onTestRecipientSelected(store.flow.value.recipients[1])
+        v.onTestSend()
+        gate.complete(MailResult.Success)
+        v.onClosed()
+        assertEquals(TestSendPhase.Idle, v.testSend.value)
+        assertEquals("r1", v.testRecipient.value!!.id)
     }
 
     @Test fun `次へは保存済みパスワード欄を飛ばす`() {
