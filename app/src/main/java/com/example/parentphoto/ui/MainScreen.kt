@@ -75,8 +75,12 @@ fun MainScreen(model: MainUiModel, viewModel: MainViewModel, cameraController: C
                 onRetake = viewModel::onRetake,
                 onSettingsLongPress = viewModel::onSettingsLongPress,
             )
-            // TODO(PLAN-3): 取り消すの操作(onCancel)を状態機械につなぐ
-            is UiState.CancelWindow -> CancelWindowScreen(model.photoFile, s.secondsLeft, model.buttonSize) {}
+            is UiState.CancelWindow -> CancelWindowScreen(
+                photoFile = model.photoFile,
+                secondsLeft = s.secondsLeft,
+                buttonSize = model.buttonSize,
+                onCancel = viewModel::onCancelUndo,
+            )
             is UiState.Sending -> SendingScreen(model.photoFile)
             UiState.Sent -> SentScreen()
             UiState.QueuedNotice -> QueuedNoticeScreen()
