@@ -55,6 +55,12 @@ interface SendFlowOutbox {
 
     /** 失敗・回線なし・時間切れ: 再送待ちか要確認にし、ワーカーを登録する */
     suspend fun markQueued(itemId: ItemId, result: MailResult)
+
+    /**
+     * 画面が閉じられた時に猶予中・送信中だった項目を、アプリ全体のスコープで送信待ちにしてすぐ再送させる(Q69)。
+     * 画面のスコープは終わるので、呼んだら待たずに戻る
+     */
+    fun requeueAbandoned(itemId: ItemId)
 }
 
 /** 撮影(ds 4.2 / 4.3)。成功時は縮小済みの preview.jpg を返す */
