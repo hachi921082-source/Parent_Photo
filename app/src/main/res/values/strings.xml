@@ -30,9 +30,88 @@
     <string name="capture_failure">撮影できませんでした。もう一度お試しください</string>
     <!-- 設定画面の Snackbar(ds 3.1。settings-screen で使う) -->
     <string name="snackbar_saved">保存しました</string>
+    <!-- 保存で DataStore・Keystore の例外が起きたとき(Q70) -->
+    <string name="snackbar_save_failed">保存できませんでした</string>
     <string name="snackbar_waiting">順番待ちです。しばらくお待ちください</string>
+    <!-- 隠し設定画面(ds 9.1、settings-screen PLAN-1) -->
+    <string name="settings_title">設定</string>
+    <!-- 送り先(ds 9.1 1、settings-screen PLAN-2) -->
+    <string name="section_recipients">送り先 %1$d/%2$d</string>
+    <string name="button_add_recipient">追加</string>
+    <string name="dialog_add_recipient">送り先を追加</string>
+    <string name="dialog_edit_recipient">送り先を編集</string>
+    <string name="label_recipient_name">表示名</string>
+    <string name="label_recipient_email">メールアドレス</string>
+    <string name="confirm_delete_recipient">この宛先を削除しますか？</string>
+    <string name="confirm_delete_recipient_queued">この宛先を削除しますか？ 送れていない写真が%1$d枚あります。削除すると、その写真は送られなくなります（未送信一覧に残ります）。</string>
+    <string name="button_delete">削除</string>
+    <string name="section_sender_name">送信者名</string>
+    <string name="label_sender_name">送信者名（例: お父さん）</string>
+    <string name="section_mail">メール設定</string>
+    <string name="label_smtp_user">送信元メールアドレス</string>
+    <string name="label_app_password">アプリパスワード</string>
+    <string name="label_smtp_host">SMTPホスト</string>
+    <string name="label_smtp_port">SMTPポート</string>
+    <!-- 保存済みパスワードの伏せ字(16文字)。実際の値は出さない(ds 9.2) -->
+    <string name="password_saved_mask" translatable="false">●●●●●●●●●●●●●●●●</string>
+    <string name="button_change_password">変更</string>
+    <string name="button_settings_cancel">キャンセル</string>
+    <string name="button_save">保存</string>
+    <string name="section_button_size">ボタンの大きさ</string>
+    <string name="button_size_standard">標準</string>
+    <string name="button_size_large">大</string>
+    <string name="button_size_xlarge">特大</string>
+    <!-- テスト送信(ds 9.5、settings-screen PLAN-3) -->
+    <string name="section_test_send">テスト送信</string>
+    <string name="label_test_recipient">送り先</string>
+    <string name="button_test_send">テスト送信</string>
+    <string name="hint_no_recipients">送り先を登録してください</string>
+    <string name="hint_save_mail_first">先にメール設定を保存してください</string>
+    <string name="hint_save_first">先に保存してください</string>
+    <string name="test_result_ok">送信できました</string>
+    <string name="test_result_auth">ログインできませんでした。送信元アドレスとアプリパスワードを確認してください</string>
+    <string name="test_result_network">ネットワークに接続できませんでした</string>
+    <string name="test_result_rejected">宛先アドレスが受け付けられませんでした</string>
+    <string name="test_result_other">送信に失敗しました（%1$s）</string>
+    <string name="button_ok">OK</string>
+    <string name="link_unsent">未送信一覧</string>
+    <string name="link_send_log">送信ログ</string>
+    <!-- 未送信一覧(ds 9.6、settings-screen PLAN-4) -->
+    <string name="unsent_group_waiting">送信待ち %1$d件</string>
+    <string name="unsent_group_attention">要確認 %1$d件/%2$d</string>
+    <string name="state_waiting">待機中</string>
+    <string name="state_attention">要確認</string>
+    <string name="reason_auth">ログイン失敗</string>
+    <string name="reason_permanent">送信拒否</string>
+    <string name="reason_retry_expired">24時間再試行しても送れませんでした</string>
+    <string name="reason_recipient_deleted">宛先が削除されました</string>
+    <string name="deleted_recipient">（削除された宛先）</string>
+    <string name="button_resend_now">今すぐ再送</string>
+    <string name="confirm_delete_item">削除しますか？</string>
+    <string name="no_image">画像なし</string>
+    <string name="unsent_empty">未送信の写真はありません</string>
+    <!-- 送信ログ(ds 9.7) -->
+    <string name="log_sent">送信成功</string>
+    <string name="log_failed">失敗</string>
+    <string name="log_queued_offline">オフラインのため保留</string>
+    <string name="log_deleted_manual">削除</string>
+    <string name="log_deleted_overflow">削除（上限超過）</string>
+    <string name="log_resend_requested">再送要求</string>
+    <string name="log_test_ok">テスト成功</string>
+    <string name="log_test_failed">テスト失敗</string>
+    <string name="log_empty">送信ログはありません</string>
+    <!-- 未保存の変更があるときの戻る確認(ds 9.1 3、Q61) -->
+    <string name="dirty_message">保存していない変更があります。破棄しますか？</string>
+    <string name="button_discard">破棄</string>
+    <string name="button_stay">戻る</string>
     <!-- 読み上げ用の説明(ds 9.9) -->
     <string name="cd_shutter">撮影</string>
     <string name="cd_settings">設定</string>
     <string name="cd_progress">処理中</string>
+    <string name="cd_show_password">パスワードを表示</string>
+    <string name="cd_hide_password">パスワードを隠す</string>
+    <!-- 設定画面のアプリバーの戻る矢印(ds 9.9 に記載なし、PLAN-1 実装メモ) -->
+    <string name="cd_back">戻る</string>
+    <string name="cd_edit">編集</string>
+    <string name="cd_delete">削除</string>
 </resources>

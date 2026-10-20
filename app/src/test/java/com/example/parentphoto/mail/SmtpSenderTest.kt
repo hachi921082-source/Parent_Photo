@@ -151,6 +151,16 @@ class SmtpSenderTest {
         assertEquals(Triple(SendLogResult.TEST_FAILED, "太郎", "TIMEOUT"), log.lines[1])
     }
 
+    // テスト送信も上限で打ち切り、TIMEOUT として TEST_FAILED を記録する(settings-screen PLAN-3)
+    @Test
+    fun sendTestTimeoutIsCappedAndLogged() = runBlocking {
+        val latch = java.util.concurrent.CountDownLatch(1)
+        val r = sender(FakeSettings(base), transport = { latch.await() }, timeoutMs = 300).sendTest(recipient)
+        latch.countDown()
+        assertEquals(MailCode.TIMEOUT, (r as MailResult.Failure).code)
+        assertEquals(Triple(SendLogResult.TEST_FAILED, "太郎", "TIMEOUT"), log.lines.last())
+    }
+
     @Test
     fun sessionPropertiesByPort() {
         val p465 = DefaultSessionFactory.properties("h", 465)

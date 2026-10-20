@@ -10,6 +10,7 @@ Source: ds 9 intro, 9.1 (sections 2-4, 6), 9.2, 9.3, 9.4, 9.8, 9.9. Package `ui/
 5. Save and dirty handling
 6. Button size
 7. Tests
+8. Implementation notes
 
 ## 1. Shell
 Scrollable single screen (`settings` route, see PLAN.md), top app bar "設定" with back arrow, Material3 `Scaffold` with a `SnackbarHost`. Sections in order: 送り先 (PLAN-2), 送信者名, メール設定 (SMTP), ボタンの大きさ, テスト送信 (PLAN-3), links 未送信一覧 and 送信ログ (PLAN-4). Follows the system font scale. All texts in `strings.xml`.
@@ -43,3 +44,14 @@ Radio group 標準 / 大 / 特大; saved immediately (not part of the dirty form
 
 ## 7. Tests
 Compose/JVM: each validation error text and max-length behavior; 保存 enabled when dirty (even if invalid) and disabled when clean; invalid press saves nothing, shows errors, scrolls to and focuses the first error; valid press saves, shows Snackbar "保存しました", calls resume hook; password flows (new, saved, 変更, 変更 then キャンセル restores, 変更 then empty is invalid, whitespace stripped); keyboard types and IME actions per field; dirty dialog both buttons and system back; settings text scales with font scale 2f.
+
+## 8. Implementation notes
+Code: `ui/settings/SmtpForm.kt` (form state, limits, validation, keyboards), `SettingsViewModel.kt`, `SettingsViewModelFactory.kt`, `SettingsScreen.kt` (main route), `SettingsNavHost.kt` (routes; PLAN-4 sub-screens are empty stubs). Seams: `TODO(PLAN-2)` / `TODO(PLAN-3)` in `SettingsScreen.kt`, `TODO(PLAN-4)` in `SettingsNavHost.kt`.
+- Deviation (scoping): `SettingsViewModel` is Activity-scoped (`viewModel()` in `MainScreen`), not scoped to the nested graph entry. Closing settings (`SettingsNavHost` close path) calls `onClosed()`, which discards the form; the next open re-reads saved values (`onOpened()`, idempotent while loaded). Reason: the NavHost leaves composition when settings closes without popping its entries, so graph-scoped stores would not be cleared reliably. Same user-visible behavior (edits survive sub-screen navigation and configuration changes).
+- Ports instead of plan names: `SettingsScreenStore` (wraps `SettingsRepository`, crypto on `Dispatchers.IO`) and `SetupResumer` (real: `OutboxRepository.resumeAfterSetupFix()`, no fake needed since it exists).
+- Saved-password state = a decryptable password exists (`readPassword() != null`), so an undecryptable cipher (key lost, ds 8.2) shows the empty NEW field instead of the mask.
+- `MainViewModel.reevaluate()` now skips while settings is open. Found on device: saving valid SMTP settings cleared SetupRequired and the camera permission dialog appeared over the settings screen. Precedence is still evaluated by `onSettingsClosed()` (ds 2.2 "after returning from Settings").
+- Autofill: Compose 1.7 text fields are not exposed to the Android autofill framework unless registered explicitly, so the password field is excluded without extra semantics.
+- Visual choices (not in ds): section headers `titleMedium`; 保存 is a full-width filled button below SMTPポート; 変更 and キャンセル are `TextButton`s right of the password field; the show/hide toggle is also shown in the CHANGING state; 未送信一覧 / 送信ログ are full-width outlined buttons at the bottom; back-arrow content description "戻る" (`cd_back`, not listed in ds 9.9); the dirty dialog has no title; a field's error text clears when that field is edited (re-validated on the next 保存); input over a max length is cut at the limit (paste keeps the first N characters); no transition animations between routes; recipients and test-send sections render nothing until PLAN-2/3.
+- Save failure (DataStore/Keystore exception): logged by class name, input kept (form stays dirty), Snackbar "保存できませんでした" (`SnackbarDuration.Short`, no action) [CONFIRMED by the user, Q70].
+- Q70 (user decision): back-arrow description "戻る", field error clears on edit, and the visual choices above are confirmed as built.

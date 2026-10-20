@@ -73,6 +73,8 @@ dependencies {
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)
     implementation(libs.compose.material3)
+    // 設定画面の副画面(未送信一覧・送信ログ)への遷移(settings-screen PLAN.md)
+    implementation(libs.navigation.compose)
 
     implementation(libs.camerax.core)
     implementation(libs.camerax.camera2)

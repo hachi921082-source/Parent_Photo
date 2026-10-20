@@ -653,6 +653,25 @@ class MainViewModelTest {
         assertEquals(UiState.SetupRequired, vm.state())
     }
 
+    @Test
+    fun 設定を開いている間にSetupRequiredが解けてもカメラ権限は閉じるまで要求しない() = runTest(dispatcher) {
+        permission.granted = false
+        settings.required = true
+        val vm = ready(newVm())
+        assertEquals(UiState.SetupRequired, vm.state())
+        vm.onSettingsLongPress()
+        // 設定画面でメール設定を保存した
+        settings.required = false
+        settings.flow.tryEmit(Settings())
+        runCurrent()
+        vm.onResume()
+        assertFalse(vm.ui.value.cameraPermissionRequest)
+        assertEquals(0, permission.requestCount)
+        vm.onSettingsClosed()
+        assertTrue(vm.ui.value.cameraPermissionRequest)
+        assertEquals(1, permission.requestCount)
+    }
+
     // ---- 通知権限 ----
 
     @Test

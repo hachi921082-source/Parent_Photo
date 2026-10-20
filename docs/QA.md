@@ -437,3 +437,27 @@ Background: a self-review found places where the implementer would have had to c
 ### Q69. Task swiped away during the undo window or a foreground send (process alive) [RESOLVED]
 - Context: ViewModel cleared, flow coroutines cancelled, item stuck in CANCEL_WINDOW/SENDING_FG until next cold start.
 - Answer: treat like a kill (ds 7.6): on the application scope set the item to QUEUED and call `triggerNow`, so the worker sends it right away. A swipe during the undo window still sends the photo. CONFIRMED by the user.
+
+### Q70. Settings screen details left open by ds 9 (settings-screen PLAN-1) [RESOLVED]
+- Back arrow content description: "戻る".
+- Field errors: an error clears when that field is edited; full validation re-runs on the next 保存.
+- Save failure (DataStore/Keystore exception): input is kept and a Snackbar "保存できませんでした" (Material3 `SnackbarDuration.Short`, no action) is shown; this extends Q57's Snackbar list by one.
+- Visuals accepted as built: 保存 full-width filled button; 未送信一覧 / 送信ログ full-width outlined buttons; 変更 / キャンセル text buttons right of the password field; dirty-form dialog without title; paste over the length limit keeps the first N characters.
+- CONFIRMED by the user.
+
+### Q71. Recipient section details left open by ds 9 (settings-screen PLAN-2) [RESOLVED]
+- Add/edit/delete persistence failure (DataStore exception): same Snackbar as Q70 "保存できませんでした" (also for delete); dialog input is kept.
+- Recipient dialog: on 保存 with errors, focus moves to the first error field (same as Q53).
+- Visuals accepted as built: 追加 full-width outlined button; display names wrap; rows min 56 dp; address in a lighter color; empty list shows only the heading and 追加; delete confirm dialog without title.
+- CONFIRMED by the user.
+
+### Q72. Test-send section details left open by ds 9 (settings-screen PLAN-3) [RESOLVED]
+- Recipient dropdown label: "送り先".
+- With 0 recipients the dropdown stays visible, empty and disabled (hint "送り先を登録してください" shown).
+- Visuals accepted as built: テスト送信 full-width filled button; progress dialog without title (32 dp spinner + "送信中..."); result dialog without title.
+- CONFIRMED by the user.
+
+### Q73. settings-screen PLAN-4 look/wording adopted as built [ADOPTED, not individually confirmed]
+- Per the 2026-10-21 working rule (look/wording is built as recommended and listed at feature end), these were adopted without a per-item question: 要確認 rows show "要確認" and the reason on two lines (reason in a lighter color); send-log row line 1 = time + recipient, line 2 = result (+ code for failures); outlined buttons; divider lines between rows; delete confirm dialog without title; thumbnail placeholder #E0E0E0.
+- The user may still ask to change any of them.
+- Known issue carried to acceptance-verification: on API 26, pressing 保存 or the password 変更→キャンセル can move focus to the sender-name field and open the keyboard; check on the real device (Android 16) whether it reproduces.

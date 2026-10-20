@@ -370,8 +370,13 @@ class MainViewModel(
         outbox.setPreviewExists(false)
     }
 
-    /** 優先順位で決まる状態のときだけ置き換える。撮影中・プレビュー・送信の流れは中断しない(Q62) */
+    /**
+     * 優先順位で決まる状態のときだけ置き換える。撮影中・プレビュー・送信の流れは中断しない(Q62)。
+     * 設定を開いている間は評価しない(設定の保存で SetupRequired が解けても、設定画面の上にカメラ権限の
+     * ダイアログを出さない)。閉じたときに onSettingsClosed が評価し直す(ds 2.2)。
+     */
     private fun reevaluate() {
+        if (model.value.settingsOpen) return
         if (state.isPrecedenceOwned) setState(precedence())
     }
 
