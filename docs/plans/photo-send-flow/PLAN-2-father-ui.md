@@ -8,6 +8,7 @@ Source: ds 3.1-3.4, 2.1, 2.3, 9.9 (content descriptions), 1 (strings.xml). Packa
 3. Layouts per screen (ds 3.4)
 4. Settings icon long press
 5. Tests
+6. Implementation notes
 
 ## 1. Common rules
 - Theme: Material3 default light scheme from app-foundation (`ui/theme`), tokens as in ds 3.4 (background `#FFFBFE`, onBackground `#1C1B1F`, primary `#6750A4`, onPrimary `#FFFFFF`, secondary `#625B71`, outline `#79747E`, primaryContainer `#EADDFF`, onPrimaryContainer `#21005D`, scrim `#000000`; warning `#E65100`). Buttons rounded 12 dp, badges pill. No animation or transition anywhere in these screens (instant state switch, the countdown number changes without animation; use `AnimatedContent`/`Crossfade` nowhere, set `CircularProgressIndicator` default only).
@@ -70,3 +71,12 @@ Compose UI tests (`createComposeRule`), one per screen listed in section 3 (Load
 - long press 2.9 s does nothing, 3.0 s opens; slop cancels;
 - no animation: state switch is immediate under the test clock (no `AnimatedContent`).
 Manual check on a real device for readability.
+
+
+## 6. Implementation notes
+- Files (`ui/`): `FatherComponents.kt` (text sizes, `OverlayMessage`, `FatherFilledButton`/`FatherOutlinedButton`, `SettingsIcon` long press, `Badges`, `PhotoView`, `ProgressMark`), `CameraScreen.kt` (Camera/OutboxFull/Capturing; `cameraFeed` slot = `CameraView` with `onBindFailure = onCameraBindFailed`), `PreviewScreens.kt` (Preview, CancelWindow, Sending), `SimpleScreens.kt` (Loading, SetupRequired, PermissionDenied, Sent, QueuedNotice); `MainScreen` wraps them in `FatherTheme` and keeps Camera/OutboxFull/Capturing on one call site so the camera stays bound while capturing. Gear icon = `res/drawable/ic_settings.xml` (no icons library).
+- Line height: father texts use `lineHeight = 1.3.em` (the theme default 24 sp made 2-line 36 sp text overlap).
+- Q65: `MainUiModel.outboxFullNoticeVisible` (3000 ms, `OUTBOX_FULL_NOTICE_MS`) shows `outbox_full_guidance` in the dark rounded box centered over Preview.
+- Badges and the settings icon use a plain 16 dp / 4 dp margin from the content top (the app is not edge-to-edge, so the content already starts below the status bar).
+- Preview list max height = 70 percent of the screen minus the やり直す area (button size + 48 dp), so the photo keeps at least 30 percent.
+- Tests: `androidTest/ui/FatherScreensTest.kt` (Compose UI tests, run on emulator API 26).
