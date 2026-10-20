@@ -1,5 +1,7 @@
 package com.example.parentphoto.ui
 
+import com.example.parentphoto.mail.ItemId
+import com.example.parentphoto.mail.MailResult
 import com.example.parentphoto.settings.Settings
 import kotlinx.coroutines.flow.Flow
 import java.io.File
@@ -33,7 +35,26 @@ interface SendFlowOutbox {
     /** プレビュー中の写真が待機枠を1つ予約しているか(ds 2.4)。繰り上げの判定に使われる */
     fun setPreviewExists(exists: Boolean)
 
-    // TODO(PLAN-3): createItem / deleteItem / setPhase / markSent / markQueued と前面送信をここに足す
+    /**
+     * 送り先タップで項目を作る(段階 CANCEL_WINDOW、写真は outbox にコピー、ds 7.3)。
+     * 待機中が5件以上なら OutboxFullException
+     */
+    suspend fun createItem(recipientId: String, capturedAtMillis: Long, previewFile: File): ItemId
+
+    /** 取り消す: 行と outbox のファイルを消す(cache の写真は残す) */
+    suspend fun deleteItem(itemId: ItemId)
+
+    /** 猶予が終わり前面送信を始める(段階 SENDING_FG) */
+    suspend fun startForegroundSend(itemId: ItemId)
+
+    /** 前面送信(回線が明らかに無ければ試行せず Offline、ds 6.2)。待つ上限は呼び出し側の 60 秒 */
+    suspend fun sendForeground(itemId: ItemId): MailResult
+
+    /** 成功: 行とファイルを消して SENT を記録する */
+    suspend fun markSent(itemId: ItemId)
+
+    /** 失敗・回線なし・時間切れ: 再送待ちか要確認にし、ワーカーを登録する */
+    suspend fun markQueued(itemId: ItemId, result: MailResult)
 }
 
 /** 撮影(ds 4.2 / 4.3)。成功時は縮小済みの preview.jpg を返す */
