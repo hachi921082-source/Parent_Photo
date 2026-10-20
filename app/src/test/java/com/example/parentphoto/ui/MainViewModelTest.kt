@@ -1,6 +1,11 @@
 package com.example.parentphoto.ui
 
+import com.example.parentphoto.mail.FailureKind
+import com.example.parentphoto.mail.ItemId
+import com.example.parentphoto.mail.MailCode
+import com.example.parentphoto.mail.MailResult
 import com.example.parentphoto.notify.NotificationPermissionRequester
+import com.example.parentphoto.outbox.OutboxFullException
 import com.example.parentphoto.settings.ButtonSize
 import com.example.parentphoto.settings.Recipient
 import com.example.parentphoto.settings.Settings
@@ -43,8 +48,50 @@ class MainViewModelTest {
         override val recoveryDone = MutableStateFlow(false)
         val previewExistsHistory = mutableListOf<Boolean>()
         val previewExists get() = previewExistsHistory.lastOrNull() ?: false
+
+        // 呼び出し順(予約と削除の前後を確かめる)
+        val events = mutableListOf<String>()
+        var createGate: CompletableDeferred<Unit>? = null
+        var createError: Exception? = null
+        var created = 0
+        var lastCreate: Triple<String, Long, File>? = null
+        var sendGate = CompletableDeferred<MailResult>()
+        val queued = mutableListOf<Pair<String, MailResult>>()
+
         override fun setPreviewExists(exists: Boolean) {
             previewExistsHistory += exists
+            events += "preview=$exists"
+        }
+
+        override suspend fun createItem(recipientId: String, capturedAtMillis: Long, previewFile: File): ItemId {
+            createGate?.await()
+            createError?.let { throw it }
+            created++
+            lastCreate = Triple(recipientId, capturedAtMillis, previewFile)
+            events += "create"
+            return "item$created"
+        }
+
+        override suspend fun deleteItem(itemId: ItemId) {
+            events += "delete:$itemId"
+        }
+
+        override suspend fun startForegroundSend(itemId: ItemId) {
+            events += "sendingFg:$itemId"
+        }
+
+        override suspend fun sendForeground(itemId: ItemId): MailResult {
+            events += "send:$itemId"
+            return sendGate.await()
+        }
+
+        override suspend fun markSent(itemId: ItemId) {
+            events += "sent:$itemId"
+        }
+
+        override suspend fun markQueued(itemId: ItemId, result: MailResult) {
+            queued += itemId to result
+            events += "queued:$itemId"
         }
     }
 
@@ -87,6 +134,7 @@ class MainViewModelTest {
     private var sleptMs = 0L
     private var notifAsked = false
     private var notifLaunched = 0
+    private var feedbackCount = 0
 
     @Before
     fun setUp() {
@@ -116,6 +164,8 @@ class MainViewModelTest {
         elapsedRealtime = { testScheduler.currentTime + sleptMs },
         wallClock = { 1_700_000_000_000L + testScheduler.currentTime },
         cameraLog = { logs += it },
+        feedback = { feedbackCount++ },
+        flowLog = { logs += it },
     )
 
     /** 設定読み込みと復旧が済んだ状態にする */
@@ -628,6 +678,254 @@ class MainViewModelTest {
         assertEquals(UiState.PermissionDenied, vm.state())
         assertFalse(vm.ui.value.notificationPermissionRequest)
         assertFalse(notifAsked)
+    }
+
+    // ---- 取り消し猶予・前面送信・送信後(PLAN-3) ----
+
+    /** Preview から送り先を押して CancelWindow まで進める */
+    private fun TestScope.toCancelWindow(vm: MainViewModel) {
+        toPreview(vm)
+        vm.onRecipientTapped("1")
+        runCurrent()
+    }
+
+    private val transient: MailResult = MailResult.Failure(FailureKind.TRANSIENT, MailCode.NETWORK, null, null, null)
+
+    @Test
+    fun 送り先タップで項目を作り予約を外して3秒の猶予に入る() = runTest(dispatcher) {
+        val vm = ready(newVm())
+        toPreview(vm)
+        val p = vm.state() as UiState.Preview
+        vm.onRecipientTapped("1")
+        runCurrent()
+        assertEquals(Triple("1", p.capturedAtMillis, p.file), outbox.lastCreate)
+        assertEquals(UiState.CancelWindow("item1", 3), vm.state())
+        assertFalse(outbox.previewExists)
+        assertEquals(listOf("create", "preview=false"), outbox.events.takeLast(2))
+        assertEquals(capturer.file, vm.ui.value.photoFile)
+
+        advanceTimeBy(1000)
+        runCurrent()
+        assertEquals(UiState.CancelWindow("item1", 2), vm.state())
+        advanceTimeBy(1000)
+        runCurrent()
+        assertEquals(UiState.CancelWindow("item1", 1), vm.state())
+        advanceTimeBy(999)
+        runCurrent()
+        assertEquals(UiState.CancelWindow("item1", 1), vm.state())
+        advanceTimeBy(1)
+        runCurrent()
+        assertEquals(UiState.Sending("item1"), vm.state())
+        assertTrue(outbox.events.containsAll(listOf("sendingFg:item1", "send:item1")))
+        assertTrue(outbox.events.indexOf("sendingFg:item1") < outbox.events.indexOf("send:item1"))
+    }
+
+    @Test
+    fun 取り消すは予約を戻してから項目を消し同じPreviewに戻る() = runTest(dispatcher) {
+        val vm = ready(newVm())
+        toPreview(vm)
+        val p = vm.state()
+        vm.onRecipientTapped("1")
+        runCurrent()
+        advanceTimeBy(1500)
+        runCurrent()
+        val deletes = capturer.deleteCount
+        vm.onCancelUndo()
+        runCurrent()
+        assertEquals(p, vm.state())
+        assertTrue(outbox.previewExists)
+        assertEquals(listOf("preview=true", "delete:item1"), outbox.events.takeLast(2))
+        advanceTimeBy(5000)
+        runCurrent()
+        assertEquals(p, vm.state())
+        assertFalse(outbox.events.any { it.startsWith("send") })
+        // cache の写真は残す
+        assertEquals(deletes, capturer.deleteCount)
+    }
+
+    @Test
+    fun 成功で送りましたを2秒出し合図は1回だけで写真を消してCameraに戻る() = runTest(dispatcher) {
+        val vm = ready(newVm())
+        toCancelWindow(vm)
+        advanceTimeBy(3000)
+        runCurrent()
+        outbox.sendGate.complete(MailResult.Success)
+        runCurrent()
+        assertEquals(UiState.Sent, vm.state())
+        assertTrue("sent:item1" in outbox.events)
+        assertEquals(1, feedbackCount)
+        // 再開しても鳴らし直さない
+        vm.onResume()
+        assertEquals(1, feedbackCount)
+
+        val deletes = capturer.deleteCount
+        advanceTimeBy(1999)
+        runCurrent()
+        assertEquals(UiState.Sent, vm.state())
+        advanceTimeBy(1)
+        runCurrent()
+        assertEquals(UiState.Camera, vm.state())
+        assertEquals(deletes + 1, capturer.deleteCount)
+        assertEquals(null, vm.ui.value.photoFile)
+        assertFalse(outbox.previewExists)
+        assertEquals(1, feedbackCount)
+    }
+
+    @Test
+    fun 失敗はあとで送りますを2秒出し合図なし() = runTest(dispatcher) {
+        val vm = ready(newVm())
+        toCancelWindow(vm)
+        advanceTimeBy(3000)
+        runCurrent()
+        outbox.sendGate.complete(transient)
+        runCurrent()
+        assertEquals(UiState.QueuedNotice, vm.state())
+        assertEquals(listOf("item1" to transient), outbox.queued)
+        assertEquals(0, feedbackCount)
+        advanceTimeBy(1999)
+        runCurrent()
+        assertEquals(UiState.QueuedNotice, vm.state())
+        advanceTimeBy(1)
+        runCurrent()
+        assertEquals(UiState.Camera, vm.state())
+    }
+
+    @Test
+    fun 回線なしもあとで送ります() = runTest(dispatcher) {
+        val vm = ready(newVm())
+        toCancelWindow(vm)
+        advanceTimeBy(3000)
+        runCurrent()
+        outbox.sendGate.complete(MailResult.Offline)
+        runCurrent()
+        assertEquals(UiState.QueuedNotice, vm.state())
+        assertEquals(MailResult.Offline, outbox.queued.single().second)
+    }
+
+    @Test
+    fun 前面送信は60秒で打ち切りTIMEOUTとして送信待ちにする() = runTest(dispatcher) {
+        val vm = ready(newVm())
+        toCancelWindow(vm)
+        advanceTimeBy(3000)
+        runCurrent()
+        advanceTimeBy(59_999)
+        runCurrent()
+        assertEquals(UiState.Sending("item1"), vm.state())
+        advanceTimeBy(1)
+        runCurrent()
+        assertEquals(UiState.QueuedNotice, vm.state())
+        val r = outbox.queued.single().second as MailResult.Failure
+        assertEquals(FailureKind.TRANSIENT, r.kind)
+        assertEquals(MailCode.TIMEOUT, r.code)
+    }
+
+    @Test
+    fun 送信後に5件ならOutboxFullに戻る() = runTest(dispatcher) {
+        val vm = ready(newVm())
+        toCancelWindow(vm)
+        advanceTimeBy(3000)
+        runCurrent()
+        outbox.activeCount.value = 5
+        outbox.sendGate.complete(transient)
+        runCurrent()
+        advanceTimeBy(2000)
+        runCurrent()
+        assertEquals(UiState.OutboxFull, vm.state())
+    }
+
+    @Test
+    fun createItemの満杯例外はPreviewと写真を残し案内を出す() = runTest(dispatcher) {
+        val vm = ready(newVm())
+        toPreview(vm)
+        val p = vm.state()
+        outbox.createError = OutboxFullException()
+        vm.onRecipientTapped("1")
+        runCurrent()
+        assertEquals(p, vm.state())
+        assertTrue(vm.ui.value.outboxFullNoticeVisible)
+        assertTrue(outbox.previewExists)
+        // 件数が減って例外が出なくなれば押せる
+        outbox.createError = null
+        vm.onRecipientTapped("1")
+        runCurrent()
+        assertTrue(vm.state() is UiState.CancelWindow)
+        assertFalse(vm.ui.value.outboxFullNoticeVisible)
+    }
+
+    @Test
+    fun その他のcreateItem失敗はPreviewのまま() = runTest(dispatcher) {
+        val vm = ready(newVm())
+        toPreview(vm)
+        val p = vm.state()
+        outbox.createError = java.io.IOException("disk")
+        vm.onRecipientTapped("1")
+        runCurrent()
+        assertEquals(p, vm.state())
+        assertTrue(outbox.previewExists)
+        assertTrue(logs.any { it.startsWith("createItem failed") })
+    }
+
+    @Test
+    fun 項目作成中の二度押しとやり直すは無視する() = runTest(dispatcher) {
+        val vm = ready(newVm())
+        toPreview(vm)
+        val gate = CompletableDeferred<Unit>()
+        outbox.createGate = gate
+        vm.onRecipientTapped("1")
+        runCurrent()
+        vm.onRecipientTapped("1")
+        vm.onRetake()
+        runCurrent()
+        gate.complete(Unit)
+        runCurrent()
+        assertEquals(1, outbox.created)
+        assertEquals(UiState.CancelWindow("item1", 3), vm.state())
+    }
+
+    @Test
+    fun スリープで猶予の期限を過ぎていたら再開時にすぐ送信に進む() = runTest(dispatcher) {
+        val vm = ready(newVm())
+        toCancelWindow(vm)
+        advanceTimeBy(500)
+        runCurrent()
+        sleptMs = 5000
+        vm.onResume()
+        runCurrent()
+        assertEquals(UiState.Sending("item1"), vm.state())
+    }
+
+    @Test
+    fun スリープで2秒画面を過ぎていたら再開時にCameraで合図は鳴らし直さない() = runTest(dispatcher) {
+        val vm = ready(newVm())
+        toCancelWindow(vm)
+        advanceTimeBy(3000)
+        runCurrent()
+        outbox.sendGate.complete(MailResult.Success)
+        runCurrent()
+        sleptMs = 10_000
+        vm.onResume()
+        runCurrent()
+        assertEquals(UiState.Camera, vm.state())
+        assertEquals(1, feedbackCount)
+    }
+
+    @Test
+    fun 猶予中と送信中は設定を開けず再開でも中断しない() = runTest(dispatcher) {
+        val vm = ready(newVm())
+        toCancelWindow(vm)
+        vm.onSettingsLongPress()
+        assertFalse(vm.ui.value.settingsOpen)
+        permission.requested = true
+        permission.granted = false
+        vm.onResume()
+        runCurrent()
+        assertTrue(vm.state() is UiState.CancelWindow)
+        advanceTimeBy(3000)
+        runCurrent()
+        vm.onSettingsLongPress()
+        vm.onResume()
+        assertEquals(UiState.Sending("item1"), vm.state())
+        assertFalse(vm.ui.value.settingsOpen)
     }
 
     // ---- 戻る操作と設定アイコンの対象 ----
