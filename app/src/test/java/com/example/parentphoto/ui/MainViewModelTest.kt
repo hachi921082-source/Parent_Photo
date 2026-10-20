@@ -466,6 +466,41 @@ class MainViewModelTest {
         vm.onRecipientTapped("1")
         assertEquals(before, vm.state())
         assertTrue(outbox.previewExists)
+        assertEquals(capturer.file, vm.ui.value.photoFile)
+    }
+
+    @Test
+    fun 満杯の拒否で案内をちょうど3000ms重ね件数が減れば再び押せる() = runTest(dispatcher) {
+        val vm = ready(newVm())
+        toPreview(vm)
+        outbox.activeCount.value = 5
+        runCurrent()
+        vm.onRecipientTapped("1")
+        assertTrue(vm.ui.value.outboxFullNoticeVisible)
+        advanceTimeBy(2999)
+        runCurrent()
+        assertTrue(vm.ui.value.outboxFullNoticeVisible)
+        advanceTimeBy(1)
+        runCurrent()
+        assertFalse(vm.ui.value.outboxFullNoticeVisible)
+
+        outbox.activeCount.value = 4
+        runCurrent()
+        vm.onRecipientTapped("1")
+        assertFalse(vm.ui.value.outboxFullNoticeVisible)
+    }
+
+    @Test
+    fun やり直すで満杯の案内と写真の表示を消す() = runTest(dispatcher) {
+        val vm = ready(newVm())
+        toPreview(vm)
+        assertEquals(capturer.file, vm.ui.value.photoFile)
+        outbox.activeCount.value = 5
+        runCurrent()
+        vm.onRecipientTapped("1")
+        vm.onRetake()
+        assertFalse(vm.ui.value.outboxFullNoticeVisible)
+        assertEquals(null, vm.ui.value.photoFile)
     }
 
     // ---- 設定ルート ----
