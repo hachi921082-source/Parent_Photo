@@ -3,6 +3,7 @@ package com.example.parentphoto.ui.settings
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import com.example.parentphoto.settings.ButtonSize
+import com.example.parentphoto.settings.Recipient
 import com.example.parentphoto.settings.Settings
 import com.example.parentphoto.settings.ValidationError
 import kotlinx.coroutines.Dispatchers
@@ -34,7 +35,26 @@ class SettingsViewModelTest {
 
     private class Saved(val sender: String, val user: String, val host: String, val port: Int, val pw: String?)
 
-    private class FakeStore(initial: Settings, var passwordSaved: Boolean) : SettingsScreenStore {
+    private class FakeStore(initial: Settings, var passwordSaved: Boolean) : SettingsScreenStore, RecipientStore {
+        var nextId = 1
+        var failRecipient = false
+        override suspend fun addRecipient(name: String, email: String): Recipient? {
+            if (failRecipient) throw java.io.IOException("disk")
+            val list = flow.value.recipients
+            if (list.size >= 6) return null
+            val r = Recipient("id${nextId++}", name, email)
+            flow.value = flow.value.copy(recipients = list + r)
+            return r
+        }
+        override suspend fun updateRecipient(id: String, name: String, email: String): Boolean {
+            val list = flow.value.recipients
+            if (list.none { it.id == id }) return false
+            flow.value = flow.value.copy(recipients = list.map { if (it.id == id) it.copy(name = name, email = email) else it })
+            return true
+        }
+        override suspend fun deleteRecipient(id: String) {
+            flow.value = flow.value.copy(recipients = flow.value.recipients.filterNot { it.id == id })
+        }
         val flow = MutableStateFlow(initial)
         val saves = mutableListOf<Saved>()
         var failSave = false
@@ -56,8 +76,27 @@ class SettingsViewModelTest {
     @Before fun setUp() = Dispatchers.setMain(UnconfinedTestDispatcher())
     @After fun tearDown() = Dispatchers.resetMain()
 
-    private fun vm(store: FakeStore) =
-        SettingsViewModel(store, { resumes++ }, pat, { logs += it }).also { it.onOpened() }
+    // 削除の順番(送り先を消してから要確認へ移す)を確かめる
+    private val outboxCalls = mutableListOf<String>()
+    private var queuedCount = 0
+    private lateinit var lastStore: FakeStore
+    private val outbox = object : RecipientOutbox {
+        override suspend fun countForRecipient(recipientId: String): Int {
+            outboxCalls += "count:$recipientId"
+            return queuedCount
+        }
+        override suspend fun onRecipientDeleted(recipientId: String) {
+            val stillThere = lastStore.flow.value.recipients.any { it.id == recipientId }
+            outboxCalls += "deleted:$recipientId:stillThere=$stillThere"
+        }
+    }
+
+    private fun vm(store: FakeStore): SettingsViewModel {
+        lastStore = store
+        return SettingsViewModel(store, { resumes++ }, store, outbox, pat, { logs += it }).also { it.onOpened() }
+    }
+
+    private fun recipients(n: Int) = (1..n).map { Recipient("r$it", "送り先$it", "r$it@example.jp") }
 
     private val pw16 = "abcdefghijklmnop"
 
@@ -248,6 +287,160 @@ class SettingsViewModelTest {
         assertEquals(KeyboardType.Number, k(FormField.PORT).keyboardType)
         FormField.entries.filter { it != FormField.PORT }.forEach { assertEquals(ImeAction.Next, k(it).imeAction) }
         assertEquals(ImeAction.Done, k(FormField.PORT).imeAction)
+    }
+
+    // ---- 送り先(PLAN-2) ----
+
+    @Test fun `追加は6件まで、6件で追加ダイアログを開かない`() {
+        val store = FakeStore(Settings(), false)
+        val v = vm(store)
+        repeat(6) { i ->
+            v.onAddRecipient()
+            assertNull(v.recipientDialog.value!!.editId)
+            v.onRecipientNameChange("送り先$i")
+            v.onRecipientEmailChange("r$i@example.jp")
+            v.onRecipientDialogSave()
+            assertNull(v.recipientDialog.value)
+        }
+        assertEquals(6, v.recipients.value!!.size)
+        v.onAddRecipient()
+        assertNull(v.recipientDialog.value)
+    }
+
+    @Test fun `ダイアログの検証エラーは開いたまま、保存しない、最初の欄へ移る`() = runTest {
+        val store = FakeStore(Settings(), false)
+        val v = vm(store)
+        val events = mutableListOf<SettingsEvent>()
+        val job = launch(UnconfinedTestDispatcher(testScheduler)) { v.events.toList(events) }
+        v.onAddRecipient()
+        v.onRecipientNameChange("   ")
+        v.onRecipientEmailChange("bad")
+        v.onRecipientDialogSave()
+        val d = v.recipientDialog.value!!
+        assertEquals(ValidationError.NAME_EMPTY, d.errors[RecipientField.NAME])
+        assertEquals(ValidationError.EMAIL_FORMAT, d.errors[RecipientField.EMAIL])
+        assertTrue(store.flow.value.recipients.isEmpty())
+        assertEquals(listOf<SettingsEvent>(SettingsEvent.FocusRecipientField(RecipientField.NAME)), events)
+        // 欄を直すとその欄のエラーだけ消える
+        v.onRecipientNameChange("母")
+        assertNull(v.recipientDialog.value!!.errors[RecipientField.NAME])
+        assertEquals(ValidationError.EMAIL_FORMAT, v.recipientDialog.value!!.errors[RecipientField.EMAIL])
+        job.cancel()
+    }
+
+    @Test fun `表示名は10文字まで、11文字はエラー、前後の空白は数えない`() {
+        val store = FakeStore(Settings(), false)
+        val v = vm(store)
+        v.onAddRecipient()
+        v.onRecipientNameChange("あいうえおかきくけこさ")
+        v.onRecipientEmailChange("a@example.jp")
+        v.onRecipientDialogSave()
+        assertEquals(ValidationError.NAME_TOO_LONG, v.recipientDialog.value!!.errors[RecipientField.NAME])
+        v.onRecipientNameChange("  あいうえおかきくけこ  ")
+        v.onRecipientDialogSave()
+        assertNull(v.recipientDialog.value)
+        assertEquals("あいうえおかきくけこ", store.flow.value.recipients.single().name)
+    }
+
+    @Test fun `絵文字はUTF-16の単位で数える、5個まで可で6個はエラー`() {
+        val store = FakeStore(Settings(), false)
+        val v = vm(store)
+        v.onAddRecipient()
+        v.onRecipientEmailChange("a@example.jp")
+        v.onRecipientNameChange("👨👨👨👨👨👨")
+        v.onRecipientDialogSave()
+        assertEquals(ValidationError.NAME_TOO_LONG, v.recipientDialog.value!!.errors[RecipientField.NAME])
+        v.onRecipientNameChange("👨👨👨👨👨")
+        v.onRecipientDialogSave()
+        assertEquals("👨👨👨👨👨", store.flow.value.recipients.single().name)
+    }
+
+    @Test fun `アドレスは254文字で止まり、前後の空白を除いて保存、重複も許す`() {
+        val store = FakeStore(Settings(recipients = recipients(1)), false)
+        val v = vm(store)
+        v.onAddRecipient()
+        v.onRecipientEmailChange("a".repeat(300))
+        assertEquals(254, v.recipientDialog.value!!.email.length)
+        v.onRecipientNameChange(" 父 ")
+        v.onRecipientEmailChange(" r1@example.jp ")
+        v.onRecipientDialogSave()
+        assertEquals(Recipient("id1", "父", "r1@example.jp"), store.flow.value.recipients[1])
+    }
+
+    @Test fun `編集は位置とidを保つ`() {
+        val store = FakeStore(Settings(recipients = recipients(3)), false)
+        val v = vm(store)
+        v.onEditRecipient(store.flow.value.recipients[1])
+        val d = v.recipientDialog.value!!
+        assertEquals("r2", d.editId)
+        assertEquals("送り先2", d.name)
+        v.onRecipientNameChange("お母さん")
+        v.onRecipientDialogSave()
+        assertEquals(listOf("r1", "r2", "r3"), store.flow.value.recipients.map { it.id })
+        assertEquals("お母さん", store.flow.value.recipients[1].name)
+    }
+
+    @Test fun `ダイアログを閉じると保存しない`() {
+        val store = FakeStore(Settings(recipients = recipients(1)), false)
+        val v = vm(store)
+        v.onEditRecipient(store.flow.value.recipients[0])
+        v.onRecipientNameChange("変えた")
+        v.onRecipientDialogDismiss()
+        assertNull(v.recipientDialog.value)
+        assertEquals("送り先1", store.flow.value.recipients[0].name)
+    }
+
+    @Test fun `送り先の保存失敗は入力を残して保存できませんでした`() = runTest {
+        val store = FakeStore(Settings(), false).apply { failRecipient = true }
+        val v = vm(store)
+        val events = mutableListOf<SettingsEvent>()
+        val job = launch(UnconfinedTestDispatcher(testScheduler)) { v.events.toList(events) }
+        v.onAddRecipient()
+        v.onRecipientNameChange("父")
+        v.onRecipientEmailChange("a@example.jp")
+        v.onRecipientDialogSave()
+        assertEquals("父", v.recipientDialog.value!!.name)
+        assertEquals(listOf<SettingsEvent>(SettingsEvent.SaveFailed), events)
+        job.cancel()
+    }
+
+    @Test fun `削除は枚数を数えて確認し、送り先を消してから要確認へ移す`() {
+        val store = FakeStore(Settings(recipients = recipients(2)), false)
+        val v = vm(store)
+        queuedCount = 3
+        v.onDeleteRecipient(store.flow.value.recipients[0])
+        assertEquals(DeleteConfirmState("r1", 3), v.deleteConfirm.value)
+        v.onDeleteConfirmed()
+        assertNull(v.deleteConfirm.value)
+        assertEquals(listOf("r2"), store.flow.value.recipients.map { it.id })
+        assertEquals(listOf("count:r1", "deleted:r1:stillThere=false"), outboxCalls)
+    }
+
+    @Test fun `削除のキャンセルは何も消さない`() {
+        val store = FakeStore(Settings(recipients = recipients(1)), false)
+        val v = vm(store)
+        v.onDeleteRecipient(store.flow.value.recipients[0])
+        v.onDeleteDismiss()
+        assertNull(v.deleteConfirm.value)
+        assertEquals(1, store.flow.value.recipients.size)
+        assertEquals(listOf("count:r1"), outboxCalls)
+    }
+
+    @Test fun `送り先の変更はフォームを dirty にせず、閉じるとダイアログも閉じる`() {
+        val store = FakeStore(Settings(recipients = recipients(1)), false)
+        val v = vm(store)
+        v.onAddRecipient()
+        v.onRecipientNameChange("父")
+        assertFalse(v.form.value.dirty)
+        v.onClosed()
+        assertNull(v.recipientDialog.value)
+    }
+
+    @Test fun `送り先ダイアログのキーボード`() {
+        assertEquals(KeyboardType.Text, RecipientFormLogic.keyboardOptions(RecipientField.NAME).keyboardType)
+        assertEquals(ImeAction.Next, RecipientFormLogic.keyboardOptions(RecipientField.NAME).imeAction)
+        assertEquals(KeyboardType.Email, RecipientFormLogic.keyboardOptions(RecipientField.EMAIL).keyboardType)
+        assertEquals(ImeAction.Done, RecipientFormLogic.keyboardOptions(RecipientField.EMAIL).imeAction)
     }
 
     @Test fun `次へは保存済みパスワード欄を飛ばす`() {
