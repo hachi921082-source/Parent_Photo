@@ -43,6 +43,9 @@ sealed interface SettingsEvent {
     /** 保存に成功した(Snackbar「保存しました」)。 */
     data object Saved : SettingsEvent
 
+    /** 保存で例外が起きた(Snackbar「保存できませんでした」、Q70)。入力はそのまま残す。 */
+    data object SaveFailed : SettingsEvent
+
     /** 最初のエラー欄へスクロールしてフォーカスする。 */
     data class FocusField(val field: FormField) : SettingsEvent
 }
@@ -158,9 +161,12 @@ class SettingsViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                // 保存できなかったときは入力をそのまま残す(失敗時の文言は仕様にない)
+                // 保存できなかったときは入力をそのまま残し「保存できませんでした」を出す(Q70)
                 log("saveSmtp failed: ${e.javaClass.simpleName}")
-                if (mySession == session) saving = false
+                if (mySession == session) {
+                    saving = false
+                    _events.trySend(SettingsEvent.SaveFailed)
+                }
                 return@launch
             }
             if (mySession == session) {
