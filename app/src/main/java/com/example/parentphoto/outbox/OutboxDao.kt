@@ -85,6 +85,15 @@ interface OutboxDao {
     )
     suspend fun requeueInFlight(): Int
 
+    // 画面が閉じられて止まった前面の流れの行だけを送信待ちにする(Q69)。消えた・送信待ち・要確認の行は動かさない
+    @Query(
+        """
+        UPDATE outbox_item SET phase = 'QUEUED'
+        WHERE id = :id AND state = 'WAITING' AND phase IN ('CANCEL_WINDOW', 'SENDING_FG')
+        """,
+    )
+    suspend fun requeueForeground(id: String): Int
+
     @Query("SELECT id FROM outbox_item")
     suspend fun allIds(): List<String>
 
