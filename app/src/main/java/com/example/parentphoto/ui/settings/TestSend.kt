@@ -29,12 +29,18 @@ object TestSendLogic {
      * 1. 送り先なし 2. 保存済みのメール設定が不正・未設定(ds 8.3) 3. フォームに未保存の変更あり。
      */
     @StringRes
-    fun hint(recipientCount: Int, savedSetupValid: Boolean, formDirty: Boolean): Int? = when {
+    fun hint(recipientCount: Int, savedSetupValid: Boolean?, formDirty: Boolean): Int? = when {
         recipientCount == 0 -> R.string.hint_no_recipients
+        // 保存済み設定の読み込み前(null)は案内を出さない(開いた直後に一瞬出るのを避ける)
+        savedSetupValid == null -> null
         !savedSetupValid -> R.string.hint_save_mail_first
         formDirty -> R.string.hint_save_first
         else -> null
     }
+
+    /** テスト送信を押せるか。案内が出ない状態で、保存済み設定が読み込み済みで有効なときだけ。 */
+    fun canSend(recipientCount: Int, savedSetupValid: Boolean?, formDirty: Boolean): Boolean =
+        recipientCount > 0 && savedSetupValid == true && hint(recipientCount, savedSetupValid, formDirty) == null
 
     /** 選んだ送り先。未選択や削除済みなら残っている先頭。送り先がなければ null。 */
     fun selected(recipients: List<Recipient>, selectedId: String?): Recipient? =
