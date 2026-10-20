@@ -5,7 +5,11 @@ import android.util.Patterns
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import com.example.parentphoto.ParentPhotoApp
+import com.example.parentphoto.mail.ItemId
+import com.example.parentphoto.outbox.OutboxItemView
 import com.example.parentphoto.outbox.OutboxRepository
+import com.example.parentphoto.outbox.ResendOutcome
+import com.example.parentphoto.outbox.SendLogEntry
 import com.example.parentphoto.settings.ButtonSize
 import com.example.parentphoto.settings.Recipient
 import com.example.parentphoto.settings.Settings
@@ -30,6 +34,7 @@ class SettingsViewModelFactory(private val app: ParentPhotoApp) : ViewModelProvi
             recipientOutbox = RepositoryRecipientOutbox(outbox),
             // 設定の読み出しとパスワードの復号を含むので IO で行う(60秒の上限と送信ログは SmtpSender 側)
             testSender = TestMailSender { r -> withContext(Dispatchers.IO) { app.smtpSender.sendTest(r) } },
+            unsentOutbox = RepositoryUnsentOutbox(outbox),
             emailPattern = Patterns.EMAIL_ADDRESS,
             log = { Log.w(TAG_SETTINGS, it) },
         )
@@ -59,6 +64,16 @@ private class RepositorySettingsStore(private val repo: SettingsRepository) : Se
         repo.updateRecipient(id, name, email)
 
     override suspend fun deleteRecipient(id: String) = repo.deleteRecipient(id)
+}
+
+/** OutboxRepository のうち未送信一覧・送信ログで使う部分 */
+private class RepositoryUnsentOutbox(private val repo: OutboxRepository) : UnsentOutbox {
+    override val items: Flow<List<OutboxItemView>> = repo.items
+    override val sendLog: Flow<List<SendLogEntry>> = repo.sendLog
+
+    override suspend fun resendNow(itemId: ItemId): ResendOutcome = repo.resendNow(itemId)
+
+    override suspend fun deleteManual(itemId: ItemId) = repo.deleteManual(itemId)
 }
 
 /** OutboxRepository のうち送り先削除で使う部分 */
