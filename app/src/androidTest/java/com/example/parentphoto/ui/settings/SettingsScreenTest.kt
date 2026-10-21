@@ -3,6 +3,7 @@ package com.example.parentphoto.ui.settings
 import android.util.Patterns
 import android.view.KeyEvent
 import androidx.activity.ComponentActivity
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -33,6 +34,7 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performScrollTo
@@ -47,7 +49,9 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import android.os.SystemClock
 import android.view.MotionEvent
+import com.example.parentphoto.R
 import com.example.parentphoto.mail.FailureKind
+import com.example.parentphoto.ui.LocalInsetsOverride
 import com.example.parentphoto.mail.MailCode
 import com.example.parentphoto.mail.MailResult
 import com.example.parentphoto.mail.SendLogResult
@@ -163,7 +167,11 @@ class SettingsScreenTest {
 
     private fun recipients(n: Int) = (1..n).map { Recipient("r$it", "送り先$it", "r$it@example.jp") }
 
-    private fun show(settings: Settings = Settings(), passwordSaved: Boolean = false) {
+    private fun show(
+        settings: Settings = Settings(),
+        passwordSaved: Boolean = false,
+        insets: WindowInsets? = null,
+    ) {
         store = FakeStore(settings, passwordSaved)
         // 終了時に viewModelScope を止めるため ViewModelStore に入れる
         val factory = object : ViewModelProvider.Factory {
@@ -174,7 +182,10 @@ class SettingsScreenTest {
         vm = ViewModelProvider(vmStore, factory)[SettingsViewModel::class.java]
         rule.setContent {
             val base = LocalDensity.current
-            CompositionLocalProvider(LocalDensity provides Density(base.density, fontScale)) {
+            CompositionLocalProvider(
+                LocalDensity provides Density(base.density, fontScale),
+                LocalInsetsOverride provides insets,
+            ) {
                 FamilyPhotoTheme { SettingsNavHost(viewModel = vm, onClose = { closes++ }) }
             }
         }
@@ -194,6 +205,21 @@ class SettingsScreenTest {
         field(f).performScrollTo()
         field(f).performTextClearance()
         field(f).performTextInput(value)
+    }
+
+    // 疑似のシステムバー(上 100 dp、下 48 dp)の内側に、アプリバーと本文の端が収まる
+    @Test fun contentStaysInsideSystemBars() {
+        show(insets = WindowInsets(left = 0.dp, top = 100.dp, right = 0.dp, bottom = 48.dp))
+        val root = rule.onRoot().getUnclippedBoundsInRoot()
+        val back = rule.onNodeWithContentDescription(text(R.string.cd_back)).getUnclippedBoundsInRoot()
+        assertTrue("back button top=${back.top}", back.top >= 100.dp - 0.5.dp)
+        val scroll = rule.onNodeWithTag(SettingsTags.SCROLL).getUnclippedBoundsInRoot()
+        assertTrue("scroll bottom=${scroll.bottom}", scroll.bottom <= root.bottom - 48.dp + 0.5.dp)
+        // 副画面も同じ
+        rule.onNodeWithText(text(R.string.link_send_log)).performScrollTo().performClick()
+        rule.waitForIdle()
+        val back2 = rule.onNodeWithContentDescription(text(R.string.cd_back)).getUnclippedBoundsInRoot()
+        assertTrue("sub back button top=${back2.top}", back2.top >= 100.dp - 0.5.dp)
     }
 
     @Test fun showsDefaultsAndSaveFollowsDirty() {
