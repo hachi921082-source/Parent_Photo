@@ -28,7 +28,7 @@ Resume point for a fresh conversation. Updated 2026-10-21.
 
 - Agent set: lite (`designer-lite`, `developer-lite`, `reviewer-lite`). Declared in `CLAUDE.md`.
 - Git: local repo on `main`, no remote, nothing pushed. Clean working tree.
-- `docs/QA.md`: Q1-Q74 all resolved (Q73 = look/wording adopted without per-item confirmation; Q74 = swipe-away limit accepted). Q1, Q2, Q8, Q10 are obsolete (GAS dropped).
+- `docs/QA.md`: Q1-Q75 all resolved (Q73 = look/wording adopted without per-item confirmation; Q74 = swipe-away limit accepted). Q1, Q2, Q8, Q10 are obsolete (GAS dropped).
 
 ## 2. Where Things Are
 - `CLAUDE.md`: app summary, agent set, status line.
@@ -48,7 +48,8 @@ Resume point for a fresh conversation. Updated 2026-10-21.
 
 ## 4. Open Items
 Carry-overs that later features MUST handle (check them in the named feature's review):
-- Acceptance items still open (see ds 12 notes; none blocks use): capture-failure message and CameraX bind failure (cannot be provoked); success vibration/tone feel on M06 (vibration record 300 ms but `ignored_for_settings`; check the phone's vibration settings, user to perceive); predictive-back gesture on Android 13+ (adb cannot perform it); first-attempt 60 s cap and 30/60 s timeouts; PERMANENT/REJECTED classification; recipient edit -> new address with real mail; sender-name CR/LF (unit tests only); 1600 px dimensions on a real scene; gesture navigation on all screens (only PermissionDenied checked); badge legibility over a bright camera image; 15 MB split; Android 14/15 device (spike covered it); 587 port itself not visible in Logcat (send succeeded after saving the port).
+- Acceptance items still open (see ds 12 notes; none blocks use): capture-failure message and CameraX bind failure (cannot be provoked); predictive-back gesture on Android 13+ (adb cannot perform it); first-attempt 60 s cap and 30/60 s timeouts; PERMANENT/REJECTED classification; recipient edit -> new address with real mail; sender-name CR/LF (unit tests only); 1600 px dimensions on a real scene; gesture navigation on all screens (only PermissionDenied checked); badge legibility over a bright camera image; 15 MB split; Android 14/15 device (spike covered it); 587 port itself not visible in Logcat (send succeeded after saving the port).
+- Fixed after acceptance: success vibration was dropped on M06 (usage TOUCH, touch vibration off); now explicit attributes + 600 ms at amplitude 255 (Q75, D17), verified by the user in normal/vibrate/silent.
 - Accepted limits: swipe from recents within ms of `triggerNow` may delay the send until next app start or a pending backoff job (Q74, D16; reopen with the delayed safety-net work idea if the father swipes often). Dark-photo gear on Preview is barely visible (ds 3.4 behaviour). Camera feed extends under bars with white status icons (may be hard to read in a very bright scene).
 - Not adopted ideas (can be reopened): QR-code settings import, screen-keep-on, send-to-everyone, pre-send confirmation dialog.
 - Known minor: name length check counts UTF-16 units (emoji = 2); unused mailcap `pickFirsts` in packaging (harmless).
