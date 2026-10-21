@@ -95,3 +95,10 @@
 
 ### D15 amendment (Q59-Q62, 2026-10-19)
 - Gaps found while syncing plans were closed: host length blocked silently, one icon color on all screens that show it, the dirty-form dialog treats outside tap and back as "stay" (never loses edits), and onResume never interrupts an in-progress photo flow (discarding or switching away from a captured photo or a send is worse than a stale permission state, which the normal exit re-checks).
+
+## D16. Swipe-away during the undo window / foreground send may delay the send (Q74, 2026-10-21)
+- Found on real device M06 (Android 16, FCNT arrows). Swiping the app from recents kills only the process (not a force-stop); WorkManager jobs survive. But the app's `requeueAbandoned` -> `triggerNow` (async `enqueueUniqueWork REPLACE`) is still in flight when the process dies (4-18 ms later), so the "send now" job is not registered. The photo is safe (row back to QUEUED); it is sent on the next app start (recovery uses `triggerNow`, Q64) or when an already-pending backoff job fires (about 13 min, up to about 5 h).
+- Not caused by sleep/standby: standby bucket active, device idle state active, network constraint satisfied.
+- Accepted (user, Q74): rare scenario (swipe within about 3 s + 60 s of a send), no data loss, next open sends at once.
+- Rejected for now: pre-registering a delayed safety-net work (about 90 s, KEEP, network constraint) at item creation plus a worker rule that requeues stale CANCEL_WINDOW/SENDING_FG rows (more worker logic and a spec change); waiting on `Operation.result` in `onCleared` (4-18 ms window, not reliable); expedited work / foreground service (does not fix the registration race; persistent notification).
+- Can be reopened if the father swipes the app away often.

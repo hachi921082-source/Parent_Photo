@@ -44,7 +44,8 @@ fun PreviewScreen(
     onRetake: () -> Unit,
     onSettingsLongPress: () -> Unit,
 ) {
-    BoxWithConstraints(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+    // 背景は全面、内容(写真・ボタン)はシステムバーの内側。写真の最小高さなどの割合も内側の領域で数える
+    BoxWithConstraints(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).fatherInsetsPadding()) {
         // 一覧の最大の高さ = 全体 - 写真の最小(30 %) - やり直すの領域 - 間隔
         val listMax: Dp = (maxHeight * 0.7f - buttonSize.dp.dp - 48.dp).coerceAtLeast(0.dp)
         val photoMin: Dp = maxHeight * 0.3f
@@ -120,7 +121,8 @@ fun SendingScreen(photoFile: File?) {
 // Preview と同じ並びで写真を半分暗くし、その下に 36 sp のラベル、最下部に bottom
 @Composable
 private fun DimmedPhotoLayout(photoFile: File?, label: String, bottom: @Composable () -> Unit) {
-    BoxWithConstraints(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+    // 背景は全面、内容(写真・ボタン)はシステムバーの内側。写真の最小高さなどの割合も内側の領域で数える
+    BoxWithConstraints(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).fatherInsetsPadding()) {
         val photoMin: Dp = maxHeight * 0.3f
         Column(Modifier.fillMaxSize()) {
             Box(Modifier.fillMaxWidth().weight(1f).heightIn(min = photoMin)) {

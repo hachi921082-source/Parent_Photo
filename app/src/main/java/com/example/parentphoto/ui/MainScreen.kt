@@ -25,6 +25,8 @@ import com.example.parentphoto.ui.theme.FatherTheme
  */
 @Composable
 fun MainScreen(model: MainUiModel, viewModel: MainViewModel, cameraController: CameraController) {
+    // バーのアイコンは背景に合わせる(カメラ映像の上だけ明るいアイコン)
+    SystemBarIcons(darkSystemBarIcons(model))
     if (model.settingsOpen) {
         // 隠し設定(settings-screen)。ViewModel は Activity 単位で、閉じるたびに入力を捨てる。
         // 戻る操作は設定画面側が受け、閉じると元の状態に戻り優先順位を評価し直す

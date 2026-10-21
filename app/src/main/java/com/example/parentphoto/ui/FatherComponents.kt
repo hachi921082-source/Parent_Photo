@@ -9,6 +9,9 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -26,6 +29,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -67,6 +71,17 @@ internal val ICON_ON_CAMERA = Color.White.copy(alpha = 0.7f)
 
 // カメラ映像の上の暗い箱
 internal val DARK_BOX = Color.Black.copy(alpha = 0.6f)
+
+/**
+ * 父親向け画面が避ける領域の差し替え口。通常は null で、システムバー・切り欠き(WindowInsets.safeDrawing)を避ける。
+ * テストは端末に実際の余白が無いので、ここへ疑似の余白を渡して確かめる。
+ */
+internal val LocalInsetsOverride = staticCompositionLocalOf<WindowInsets?> { null }
+
+/** 内容(操作・文字・バッジ・歯車)をシステムバーと切り欠きの内側に収める。背景や映像はこの外側に敷く */
+@Composable
+internal fun Modifier.fatherInsetsPadding(): Modifier =
+    windowInsetsPadding(LocalInsetsOverride.current ?: WindowInsets.safeDrawing)
 
 /** 36 sp の中央寄せメッセージ */
 @Composable
@@ -237,7 +252,9 @@ internal fun ProgressMark(color: Color, modifier: Modifier = Modifier) {
 @Composable
 internal fun CenteredMessageScreen(text: String, background: Color, textColor: Color, content: @Composable () -> Unit = {}) {
     Box(Modifier.fillMaxSize().background(background)) {
-        MessageText(text, Modifier.align(Alignment.Center).padding(16.dp), color = textColor)
-        content()
+        Box(Modifier.fillMaxSize().fatherInsetsPadding()) {
+            MessageText(text, Modifier.align(Alignment.Center).padding(16.dp), color = textColor)
+            content()
+        }
     }
 }

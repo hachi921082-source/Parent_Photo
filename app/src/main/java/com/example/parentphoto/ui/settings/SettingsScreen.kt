@@ -136,6 +136,7 @@ fun SettingsRoute(
     Scaffold(
         topBar = {
             TopAppBar(
+                windowInsets = settingsTopBarInsets(),
                 title = { Text(stringResource(R.string.settings_title)) },
                 navigationIcon = {
                     IconButton(onClick = back) {
@@ -145,6 +146,8 @@ fun SettingsRoute(
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
+        // バー・切り欠き・キーボードの内側に収める(入力中の欄がキーボードに隠れないように)
+        contentWindowInsets = settingsInsets(),
     ) { padding ->
         Column(
             modifier = Modifier

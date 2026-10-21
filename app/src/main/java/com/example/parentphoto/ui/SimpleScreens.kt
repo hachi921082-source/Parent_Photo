@@ -45,15 +45,18 @@ fun PermissionDeniedScreen(
     onSettingsLongPress: () -> Unit,
 ) {
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        Column(
-            modifier = Modifier.fillMaxWidth().align(Alignment.Center).padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            MessageText(stringResource(R.string.permission_denied_guidance))
-            FatherFilledButton(stringResource(R.string.open_settings_button), buttonSize, onOpenSettings)
+        // 背景は全面、内容はシステムバーの内側
+        Box(Modifier.fillMaxSize().fatherInsetsPadding()) {
+            Column(
+                modifier = Modifier.fillMaxWidth().align(Alignment.Center).padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                MessageText(stringResource(R.string.permission_denied_guidance))
+                FatherFilledButton(stringResource(R.string.open_settings_button), buttonSize, onOpenSettings)
+            }
+            SettingsIcon(ICON_ON_LIGHT, onSettingsLongPress, Modifier.align(Alignment.TopEnd).padding(4.dp))
         }
-        SettingsIcon(ICON_ON_LIGHT, onSettingsLongPress, Modifier.align(Alignment.TopEnd).padding(4.dp))
     }
 }
 
