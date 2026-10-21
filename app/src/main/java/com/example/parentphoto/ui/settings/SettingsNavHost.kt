@@ -117,6 +117,7 @@ private fun SettingsSubScreen(
     Scaffold(
         topBar = {
             TopAppBar(
+                windowInsets = settingsTopBarInsets(),
                 title = { Text(stringResource(title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -126,5 +127,7 @@ private fun SettingsSubScreen(
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
+        // バー・切り欠き・キーボードの内側に収める(入力中の欄がキーボードに隠れないように)
+        contentWindowInsets = settingsInsets(),
     ) { padding -> content(Modifier.padding(padding)) }
 }
