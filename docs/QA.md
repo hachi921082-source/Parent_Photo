@@ -466,3 +466,8 @@ Background: a self-review found places where the implementer would have had to c
 - Context: Q69 expected "the worker sends right away". On M06 the process is killed 4-18 ms after `triggerNow`, before the async job registration completes; the send happens on next app start or when a pending backoff job fires (D16).
 - Options: A accept and record (recommended); B pre-register a delayed safety-net work.
 - Answer: A. Accepted as a known limitation; photo is never lost. CONFIRMED by the user.
+
+### Q75. Success vibration length and strength on a weak motor [RESOLVED]
+- Context: on real device M06 the 300 ms vibration was not felt (motor is weak; even 300 ms at max amplitude not felt; 600 ms and 3 x 300 ms pulses felt; 1000 ms felt but weak).
+- Options: 3 x 300 ms pulses (recommended by the agent), 600 ms once, keep 300 ms.
+- Answer: 600 ms once at maximum amplitude (`createOneShot(600, 255)`). Verified by the user in NORMAL (vibration + tone), VIBRATE and SILENT (vibration only). CONFIRMED by the user.
