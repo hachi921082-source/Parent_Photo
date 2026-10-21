@@ -102,3 +102,10 @@
 - Accepted (user, Q74): rare scenario (swipe within about 3 s + 60 s of a send), no data loss, next open sends at once.
 - Rejected for now: pre-registering a delayed safety-net work (about 90 s, KEEP, network constraint) at item creation plus a worker rule that requeues stale CANCEL_WINDOW/SENDING_FG rows (more worker logic and a spec change); waiting on `Operation.result` in `onCleared` (4-18 ms window, not reliable); expedited work / foreground service (does not fix the registration race; persistent notification).
 - Can be reopened if the father swipes the app away often.
+
+## D17. Success vibration needs explicit attributes (Q75, 2026-10-21)
+- Cause found on real device M06 (Android 16): `Vibrator.vibrate(effect)` without attributes is recorded as usage TOUCH. M06 has `haptic_feedback_enabled=0`, `haptic_feedback_intensity=0` and `keyboard_vibration_enabled=0`, so TOUCH, UNKNOWN and MEDIA vibrations were `ignored_for_settings` in every ringer mode; NOTIFICATION/RINGTONE were also ignored in SILENT; ALARM, ACCESSIBILITY and COMMUNICATION_REQUEST were delivered in all modes.
+- Chosen: USAGE_ACCESSIBILITY (`VibrationAttributes`, API 33+) and USAGE_ALARM (`AudioAttributes`, API 26-32, measured on device), so the only haptic cue for the father works in normal, vibrate and silent modes whatever the touch-vibration setting is.
+- The system halves the requested amplitude on M06 (`played` 0.52 for `original` 1.00) regardless of usage; with the weak motor a single 300 ms buzz is not perceptible, hence 600 ms at amplitude 255 (Q75).
+- Rejected: leaving the usage unset (silently dropped), NOTIFICATION usage (dropped in silent mode), 3 x 300 ms pulses and 1000 ms (not chosen by the user).
+- If another phone class feels the vibration too weak or too long, adjust `Feedback.kt` (`VIBRATE_MS`, `VIBRATE_AMPLITUDE`).

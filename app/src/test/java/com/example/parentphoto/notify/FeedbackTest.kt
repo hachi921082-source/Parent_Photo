@@ -35,4 +35,12 @@ class FeedbackTest {
         feedback(normal = true, vibrateFails = true).play()
         assertEquals(1, tones)
     }
+
+    @Test
+    fun API33以上はユーザー補助属性_未満はアラーム属性() {
+        assertEquals(Feedback.VibrationKind.ALARM, Feedback.vibrationKind(26))
+        assertEquals(Feedback.VibrationKind.ALARM, Feedback.vibrationKind(32))
+        assertEquals(Feedback.VibrationKind.ACCESSIBILITY, Feedback.vibrationKind(33))
+        assertEquals(Feedback.VibrationKind.ACCESSIBILITY, Feedback.vibrationKind(36))
+    }
 }

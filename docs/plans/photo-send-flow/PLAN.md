@@ -12,7 +12,7 @@ Source: ds 2, 3 (incl. 3.4), 10.2, 12. Branch: `feature/photo-send-flow`. Depend
 - Capture-failure message shown exactly 3000 ms (`CAPTURE_FAILURE_MESSAGE_MS`), a second failure restarts the timer (ds 2.3).
 - UI audit (Q51-Q58): ds 3.4 layouts/colors, father screens ignore system font scale, precedence re-evaluated on every `onResume` without a new permission dialog (ds 2.2).
 - Timers continue in background while the process lives; process death -> recovery via worker (pending plan).
-- Vibration 300 ms + `TONE_PROP_ACK`; vibration only when ringer mode is not NORMAL.
+- Vibration 600 ms (amplitude 255) + `TONE_PROP_ACK`; vibration only when ringer mode is not NORMAL.
 
 ## Build order inside the feature
 PLAN-1 (with fakes for outbox/sender) -> PLAN-2 -> PLAN-3. The real outbox/sender wiring is done after the pending plans are implemented.
