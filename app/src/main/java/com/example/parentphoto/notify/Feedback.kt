@@ -20,7 +20,7 @@ fun interface SuccessFeedback {
 }
 
 /**
- * 振動 300 ms と短い音(TONE_PROP_ACK 200 ms)を同時に鳴らす。
+ * 振動 600 ms(最大振幅)と短い音(TONE_PROP_ACK 200 ms)を同時に鳴らす。
  * マナーモード・サイレント(着信音モードが NORMAL 以外)では振動だけにし、音は強制しない(Q49)。
  * 送信待ち・ワーカーでの送信成功では鳴らさない。
  */
@@ -55,7 +55,9 @@ class Feedback(
             if (sdk >= Build.VERSION_CODES.TIRAMISU) VibrationKind.ACCESSIBILITY else VibrationKind.ALARM
 
         private const val TAG = "ParentPhoto/Feedback"
-        private const val VIBRATE_MS = 300L
+        private const val VIBRATE_MS = 600L
+        // 実機のモーターが弱く、300 ms や既定振幅(システムが約半分に弱める)では感じ取れなかったため、600 ms・最大振幅 255 にする(Q75)
+        private const val VIBRATE_AMPLITUDE = 255
         private const val TONE_VOLUME = 80
         private const val TONE_MS = 200
         private const val RELEASE_AFTER_MS = 300L
@@ -68,7 +70,7 @@ class Feedback(
                 context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
             }
             vibrator ?: return
-            val effect = VibrationEffect.createOneShot(VIBRATE_MS, VibrationEffect.DEFAULT_AMPLITUDE)
+            val effect = VibrationEffect.createOneShot(VIBRATE_MS, VIBRATE_AMPLITUDE)
             // 属性なし(USAGE_UNKNOWN)だとタッチ振動扱いになり、タッチ時の振動をオフにした端末では無視される。
             // 明示した用途は着信音モード(通常・マナー・サイレント)や触覚フィードバック設定の影響を受けない(実機M06で確認)
             when (vibrationKind(Build.VERSION.SDK_INT)) {
