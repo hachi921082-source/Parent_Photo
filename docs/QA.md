@@ -471,3 +471,8 @@ Background: a self-review found places where the implementer would have had to c
 - Context: on real device M06 the 300 ms vibration was not felt (motor is weak; even 300 ms at max amplitude not felt; 600 ms and 3 x 300 ms pulses felt; 1000 ms felt but weak).
 - Options: 3 x 300 ms pulses (recommended by the agent), 600 ms once, keep 300 ms.
 - Answer: 600 ms once at maximum amplitude (`createOneShot(600, 255)`). Verified by the user in NORMAL (vibration + tone), VIBRATE and SILENT (vibration only). CONFIRMED by the user.
+
+### Q76. After a CameraX bind failure the screen stays black until resume [RESOLVED]
+- Context: verified on M06 with fault injection. The capture-failure message shows 3 s, then a black camera area with the shutter remains; shutter press shows the failure message again; the camera rebinds on the next resume (reopen the app / return from another app). No automatic retry (ds 4.2). Looks broken to the father but only happens when another app holds the camera (very rare).
+- Options: A accept as designed (recommended); B retry the bind when the shutter is pressed; C automatic retry every few seconds.
+- Answer: A. CONFIRMED by the user.
