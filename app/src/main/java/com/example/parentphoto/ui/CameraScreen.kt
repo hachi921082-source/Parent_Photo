@@ -44,49 +44,52 @@ fun CameraScreen(
     val shutterEnabled = state == UiState.Camera
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
+        // 映像は全面(システムバーの下まで)。操作・バッジ・歯車・文字は下の Box でバーの内側に収める
         Box(Modifier.fillMaxSize()) { cameraFeed() }
 
-        Badges(
-            unsent = unsentCount,
-            attention = attentionCount,
-            modifier = Modifier.align(Alignment.TopStart).padding(16.dp),
-        )
+        Box(Modifier.fillMaxSize().fatherInsetsPadding()) {
+            Badges(
+                unsent = unsentCount,
+                attention = attentionCount,
+                modifier = Modifier.align(Alignment.TopStart).padding(16.dp),
+            )
 
-        // 撮影中は設定アイコンを出さない
-        if (!capturing) {
-            SettingsIcon(
-                tint = ICON_ON_CAMERA,
-                onLongPress = onSettingsLongPress,
-                modifier = Modifier.align(Alignment.TopEnd).padding(4.dp),
+            // 撮影中は設定アイコンを出さない
+            if (!capturing) {
+                SettingsIcon(
+                    tint = ICON_ON_CAMERA,
+                    onLongPress = onSettingsLongPress,
+                    modifier = Modifier.align(Alignment.TopEnd).padding(4.dp),
+                )
+            }
+
+            if (capturing) {
+                ProgressMark(color = Color.White, modifier = Modifier.align(Alignment.Center))
+            }
+
+            if (captureFailureVisible) {
+                OverlayMessage(stringResource(R.string.capture_failure), Modifier.align(Alignment.Center))
+            }
+
+            if (full) {
+                // シャッターのすぐ上(16 dp)に案内を置く
+                Box(
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(start = 16.dp, end = 16.dp, bottom = SHUTTER_BOTTOM + SHUTTER_SIZE + 16.dp)
+                        .background(DARK_BOX)
+                        .padding(16.dp),
+                ) {
+                    MessageText(stringResource(R.string.outbox_full_guidance), color = Color.White)
+                }
+            }
+
+            Shutter(
+                enabled = shutterEnabled,
+                onClick = onShutter,
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = SHUTTER_BOTTOM),
             )
         }
-
-        if (capturing) {
-            ProgressMark(color = Color.White, modifier = Modifier.align(Alignment.Center))
-        }
-
-        if (captureFailureVisible) {
-            OverlayMessage(stringResource(R.string.capture_failure), Modifier.align(Alignment.Center))
-        }
-
-        if (full) {
-            // シャッターのすぐ上(16 dp)に案内を置く
-            Box(
-                Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(start = 16.dp, end = 16.dp, bottom = SHUTTER_BOTTOM + SHUTTER_SIZE + 16.dp)
-                    .background(DARK_BOX)
-                    .padding(16.dp),
-            ) {
-                MessageText(stringResource(R.string.outbox_full_guidance), color = Color.White)
-            }
-        }
-
-        Shutter(
-            enabled = shutterEnabled,
-            onClick = onShutter,
-            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = SHUTTER_BOTTOM),
-        )
     }
 }
 
