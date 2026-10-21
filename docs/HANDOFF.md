@@ -27,7 +27,7 @@ Resume point for a fresh conversation. Updated 2026-10-21.
 | acceptance-verification | done | R8 release APK; edge-to-edge insets fix found on M06 and fixed (`fatherInsetsPadding`, `SystemBars`, `SettingsInsets`, `enableEdgeToEdge`); real mail items pass; ds 12 checklist updated (open items kept with reasons); Q73, Q74, D16 |
 
 - Agent set: lite (`designer-lite`, `developer-lite`, `reviewer-lite`). Declared in `CLAUDE.md`.
-- Git: local repo on `main`, no remote, nothing pushed. Clean working tree.
+- Git: `main` pushed to the PRIVATE GitHub repo `hachi921082-source/Parent_Photo` (remote `origin`, 2026-10-22, user approved). Secrets checked before pushing: `spike.local.properties`/`local.properties` are git-ignored and not in history; no real mailbox addresses in the repo.
 - `docs/QA.md`: Q1-Q76 all resolved (Q73 = look/wording adopted without per-item confirmation; Q74 = swipe-away limit accepted). Q1, Q2, Q8, Q10 are obsolete (GAS dropped).
 
 ## 2. Where Things Are
@@ -56,7 +56,7 @@ Carry-overs that later features MUST handle (check them in the named feature's r
 - Known minor: name length check counts UTF-16 units (emoji = 2); unused mailcap `pickFirsts` in packaging (harmless).
 
 ## 5. Next Step
-1. No feature work is pending. Decide with the user: (a) release signing key (currently debug key), (b) whether to push (no remote yet), (c) whether to split commit `4cad22c` (bundles QA.md + plans/README.md + HANDOFF.md), (d) re-run the open acceptance items on a device when convenient (esp. vibration settings, predictive back, gesture navigation). New work follows the same cycle below.
+1. No feature work is pending. Decide with the user when needed: (a) release signing key (currently debug key); (b) the open acceptance items listed in section 4; (c) repo visibility stays private unless the user says otherwise. New work follows the cycle below; push only with the user's confirmation (the user approved the initial push only).
 2. Per feature, follow this cycle (dev-workflow section 7):
    1. `git checkout -b feature/<name>`.
    2. developer-lite implements.
@@ -75,6 +75,6 @@ Carry-overs that later features MUST handle (check them in the named feature's r
   - one file per commit, with a Japanese message describing the file's role;
   - trailer `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>` (model switched to Opus on 2026-10-19);
   - never push without user confirmation;
-  - known slip: commit `4cad22c` bundled `QA.md` + `plans/README.md` + `HANDOFF.md`; not yet split, user's call.
+  - known slip: commit `4cad22c` bundled `QA.md` + `plans/README.md` + `HANDOFF.md`. Not split on purpose: it is buried under about 380 later commits including `--no-ff` merges, so rewriting history would change every later hash for a cosmetic convention slip (decided 2026-10-22).
 - Token saving: one conversation per feature; build/logcat output reduced to pass/fail plus a few lines.
 - `spike.local.properties` (git-ignored) holds Gmail credentials; never read or commit it.
