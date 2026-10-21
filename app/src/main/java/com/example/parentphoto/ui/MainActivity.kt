@@ -1,8 +1,11 @@
 package com.example.parentphoto.ui
 
 import android.Manifest
+import android.graphics.Color
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
@@ -35,6 +38,12 @@ class MainActivity : ComponentActivity() {
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // 端から端まで描く(Android 15 以降は強制)。バーは透明にし、避ける処理は各画面が行う。
+        // アイコンの明暗は画面ごとに SystemBarIcons が決める(ここは初期値)
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT),
+        )
         super.onCreate(savedInstanceState)
         // 再開のたびに優先順位を評価し直す(権限の再要求はしない、ds 2.2)
         lifecycle.addObserver(
