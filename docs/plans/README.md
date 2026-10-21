@@ -26,7 +26,7 @@ Source of truth: `docs/spec.md`, `docs/detailed-spec.md` (ds), `docs/QA.md`. Sec
 | 8 | photo-send-flow | `photo-send-flow/` (3 sub-plans) | MainViewModel state machine, father-facing UI, undo window, foreground send, feedback (ds 2, 3, 10.2) | `feature/photo-send-flow` | done (merged; Q65-Q69; real-device checks -> acceptance-verification) |
 | 9 | settings-screen | `settings-screen/` (4 sub-plans) | Hidden settings UI (ds 9, 3.3) | `feature/settings-screen` | done (merged; Q70-Q73; real-server AUTH check and focus issue on real device -> acceptance-verification) |
 | 10 | attention-notifications | `attention-notifications/` | Notification, badges, notification permission (ds 10.1, 3.2) | `feature/attention-notifications` | done (merged; call sites are in outbox-queue PLAN-2) |
-| 11 | acceptance-verification | `acceptance-verification/` | Run ds 12 checklist, release build check | `feature/acceptance-verification` | planned |
+| 11 | acceptance-verification | `acceptance-verification/` | Run ds 12 checklist, release build check | `feature/acceptance-verification` | done (merged 2026-10-21; open items listed in HANDOFF section 4 and ds 12) |
 
 (Numbers are the build order; the old numbering 5-8 became 8-11.)
 
