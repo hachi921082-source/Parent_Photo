@@ -461,3 +461,8 @@ Background: a self-review found places where the implementer would have had to c
 - Per the 2026-10-21 working rule (look/wording is built as recommended and listed at feature end), these were adopted without a per-item question: 要確認 rows show "要確認" and the reason on two lines (reason in a lighter color); send-log row line 1 = time + recipient, line 2 = result (+ code for failures); outlined buttons; divider lines between rows; delete confirm dialog without title; thumbnail placeholder #E0E0E0.
 - The user may still ask to change any of them.
 - Known issue carried to acceptance-verification: on API 26, pressing 保存 or the password 変更→キャンセル can move focus to the sender-name field and open the keyboard; check on the real device (Android 16) whether it reproduces.
+
+### Q74. Swipe from recents during undo window / foreground send on a real device [RESOLVED]
+- Context: Q69 expected "the worker sends right away". On M06 the process is killed 4-18 ms after `triggerNow`, before the async job registration completes; the send happens on next app start or when a pending backoff job fires (D16).
+- Options: A accept and record (recommended); B pre-register a delayed safety-net work.
+- Answer: A. Accepted as a known limitation; photo is never lost. CONFIRMED by the user.
