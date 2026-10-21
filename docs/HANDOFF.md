@@ -11,7 +11,7 @@ Resume point for a fresh conversation. Updated 2026-10-21.
 6. Working Notes
 
 ## 1. Status
-- Phase: implementation in progress. 9 of 10 features DONE and merged to `main` (`docs/plans/README.md` Status column).
+- Phase: all 10 features DONE and merged to `main` (`docs/plans/README.md` Status column). Acceptance run done 2026-10-21 (emulator API 26, real device M06 Android 16, 7 real mails to the user's mailbox, user confirmed). Remaining: open acceptance items below, release signing, optional push.
 
 | Feature | State | Notes |
 |---|---|---|
@@ -24,11 +24,11 @@ Resume point for a fresh conversation. Updated 2026-10-21.
 | outbox-worker | done | `OutboxRunner` holds the run algorithm (`OutboxWorker` is thin; non-cancel exceptions -> `Result.retry()`); process `Mutex` prevents overlapping runs; `OutboxScheduler` (KEEP default; triggerNow REPLACE unless RUNNING, else `outbox-send-next`); `ParentPhotoApp` adds lazy `smtpSender` and `workScheduler`; startup recovery uses `triggerNow` when QUEUED rows exist (Q64); JVM 87/87, androidTest 82/82 x3 |
 | photo-send-flow | done | ports in `ui/MainPorts.kt` over real repos (`MainViewModelFactory`); timers on `elapsedRealtime` (`DeadlineTimer`), re-checked in `onResume`; father text `lineHeight = 1.3.em` (agent choice to stop 2-line overlap; user may override); Q65 notice overlay 3000 ms; foreground failure -> `triggerNow` (Q68); `onCleared` during CancelWindow/Sending -> `requeueAbandoned` + `triggerNow` (Q69); JVM 139/139, androidTest 107/107 x3 |
 | settings-screen | done | Activity-scoped `SettingsViewModel` (`onOpened`/`onClosed` reset); navigation-compose nested graph (`settings`, `settings/unsent`, `settings/log`); `MainViewModel` no longer evaluates precedence while settings are open; Q70-Q73; JVM 188, androidTest 141 x3 |
-| acceptance-verification | next | |
+| acceptance-verification | done | R8 release APK; edge-to-edge insets fix found on M06 and fixed (`fatherInsetsPadding`, `SystemBars`, `SettingsInsets`, `enableEdgeToEdge`); real mail items pass; ds 12 checklist updated (open items kept with reasons); Q73, Q74, D16 |
 
 - Agent set: lite (`designer-lite`, `developer-lite`, `reviewer-lite`). Declared in `CLAUDE.md`.
 - Git: local repo on `main`, no remote, nothing pushed. Clean working tree.
-- `docs/QA.md`: Q1-Q73 all resolved (Q73 = look/wording adopted without per-item confirmation). Q1, Q2, Q8, Q10 are obsolete (GAS dropped).
+- `docs/QA.md`: Q1-Q74 all resolved (Q73 = look/wording adopted without per-item confirmation; Q74 = swipe-away limit accepted). Q1, Q2, Q8, Q10 are obsolete (GAS dropped).
 
 ## 2. Where Things Are
 - `CLAUDE.md`: app summary, agent set, status line.
@@ -48,30 +48,13 @@ Resume point for a fresh conversation. Updated 2026-10-21.
 
 ## 4. Open Items
 Carry-overs that later features MUST handle (check them in the named feature's review):
-- Settings-screen leftovers for acceptance-verification: outbox-worker PLAN-2 section 5 check 3 remainder (real server rejects wrong password -> 要確認 + notification -> fix and save -> mail arrives); test-send success path and AUTH/REJECTED wording with a real server; focus issue on real device (Android 16): after sender-name entry + 保存, or password 変更 -> キャンセル/保存, focus may jump to the sender-name field and open the keyboard (reproduced on API 26 only; if it reproduces, needs a dedicated focus design); Snackbar "順番待ちです" needs 5 active items; Japanese/emoji names typed on a real keyboard.
-- Real-device manual checks (acceptance-verification): CameraX bind failure (not reproducible on emulator); Q69 swipe from recents with process alive -> worker attempts at once; real foreground success: "送りました！", 300 ms vibration + tone, vibration only in silent/vibrate; check 1 photo arrives and badge clears; readability of father screens. (Permission deny / never-ask-again and landscape capture already passed on emulator.)
-- Manual checks on an API 33+ device (only API 26 AVD exists; M06 is Android 16):
-  - notification permission dialog appears once only, and not again after deny + restart;
-  - no crash on `show` without permission;
-  - notification appears after grant;
-  - tap brings the app to front with the camera screen kept.
-- acceptance-verification MUST recover the unmet mail-composition-smtp Done-when:
-  - real 1- and 2-photo send via R8 release APK on both device classes, attachments readable;
-  - 587 STARTTLS;
-  - no password/body in Logcat;
-  - outbox-worker PLAN-2 section 5 device checks 5 (24 h expiry, shortened window or test clock) and 6 (multi-photo worker send on R8 release APK, real mail).
-
-Other open items:
-- Release keystore not decided (debug key for now).
-- No Gradle wrapper (see section 6 for how to build).
-- Accepted risks: credentials on the father's phone (D10), no expiry for 要確認 until overflow (D12), M06 "Exception reading response" false failures on 2-attachment sends (D14).
-- Remaining `[ASSUMPTION]` tags in ds are accepted as written; a conflict found during implementation = new question to the user, never decided by the agent.
-- Spike gap: API 29 (sense4) not tested.
+- Acceptance items still open (see ds 12 notes; none blocks use): capture-failure message and CameraX bind failure (cannot be provoked); success vibration/tone feel on M06 (vibration record 300 ms but `ignored_for_settings`; check the phone's vibration settings, user to perceive); predictive-back gesture on Android 13+ (adb cannot perform it); first-attempt 60 s cap and 30/60 s timeouts; PERMANENT/REJECTED classification; recipient edit -> new address with real mail; sender-name CR/LF (unit tests only); 1600 px dimensions on a real scene; gesture navigation on all screens (only PermissionDenied checked); badge legibility over a bright camera image; 15 MB split; Android 14/15 device (spike covered it); 587 port itself not visible in Logcat (send succeeded after saving the port).
+- Accepted limits: swipe from recents within ms of `triggerNow` may delay the send until next app start or a pending backoff job (Q74, D16; reopen with the delayed safety-net work idea if the father swipes often). Dark-photo gear on Preview is barely visible (ds 3.4 behaviour). Camera feed extends under bars with white status icons (may be hard to read in a very bright scene).
 - Not adopted ideas (can be reopened): QR-code settings import, screen-keep-on, send-to-everyone, pre-send confirmation dialog.
 - Known minor: name length check counts UTF-16 units (emoji = 2); unused mailcap `pickFirsts` in packaging (harmless).
 
 ## 5. Next Step
-1. Implement acceptance-verification (`docs/plans/acceptance-verification/PLAN.md`; runs the ds 12 checklist and the release build check; needs real device M06 (serial M06-SERIAL, Android 16, USB debugging approval) and the user's Gmail app password in the git-ignored `spike.local.properties`; ask the user to prepare both before starting; real mail is allowed only there). New working rule (user approved 2026-10-21): ask the user right away only about behavior gaps and rare error paths; build look/wording as recommended, record in Implementation notes, and list them at the end of the feature. Order: acceptance-verification is the last feature. Strictly sequential, no parallel worktrees (user decision).
+1. No feature work is pending. Decide with the user: (a) release signing key (currently debug key), (b) whether to push (no remote yet), (c) whether to split commit `4cad22c` (bundles QA.md + plans/README.md + HANDOFF.md), (d) re-run the open acceptance items on a device when convenient (esp. vibration settings, predictive back, gesture navigation). New work follows the same cycle below.
 2. Per feature, follow this cycle (dev-workflow section 7):
    1. `git checkout -b feature/<name>`.
    2. developer-lite implements.
