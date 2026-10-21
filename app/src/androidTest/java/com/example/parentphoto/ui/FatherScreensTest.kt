@@ -1,6 +1,7 @@
 package com.example.parentphoto.ui
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.width
@@ -383,5 +384,72 @@ class FatherScreensTest {
         rule.mainClock.advanceTimeByFrame()
         rule.onNodeWithText("送りました！").assertIsDisplayed()
         rule.onAllNodesWithText("あとで送ります").assertCountEquals(0)
+    }
+
+    // ---- システムバーの内側(疑似の余白: 上 100 dp、下 48 dp、左右 8 dp) ----
+
+    private val topInset = 100.dp
+    private val bottomInset = 48.dp
+
+    private fun showInset(content: @Composable () -> Unit) {
+        rule.setContent {
+            CompositionLocalProvider(
+                LocalInsetsOverride provides WindowInsets(left = 8.dp, top = topInset, right = 8.dp, bottom = bottomInset),
+            ) { FatherTheme { content() } }
+        }
+    }
+
+    private fun assertInside(desc: String, b: androidx.compose.ui.unit.DpRect) {
+        val h = rootHeight()
+        assertTrue("$desc top=${b.top}", b.top >= topInset - 0.5.dp)
+        assertTrue("$desc bottom=${b.bottom}", b.bottom <= h - bottomInset + 0.5.dp)
+    }
+
+    @Test
+    fun Cameraの操作とバッジは余白の内側でシャッターは内側の下端から32dp() {
+        showInset { camera(UiState.Camera, unsent = 2, attention = 1) }
+        val shutter = rule.onNodeWithContentDescription("撮影").getUnclippedBoundsInRoot()
+        near(rootHeight() - bottomInset - 32.dp, shutter.bottom)
+        assertInside("gear", rule.onNodeWithContentDescription("設定").getUnclippedBoundsInRoot())
+        assertInside("badge", rule.onNodeWithText("未送信 2件").getUnclippedBoundsInRoot())
+        assertInside("badge2", rule.onNodeWithText("送れていません 1件").getUnclippedBoundsInRoot())
+        near(topInset + 16.dp + 6.dp, rule.onNodeWithText("未送信 2件").getUnclippedBoundsInRoot().top)
+    }
+
+    @Test
+    fun OutboxFullの案内もシャッターの上16dpで余白の内側() {
+        showInset { camera(UiState.OutboxFull) }
+        assertInside("guidance", rule.onNodeWithText("送れていない写真が5枚あります", substring = true).getUnclippedBoundsInRoot())
+    }
+
+    @Test
+    fun Previewは写真と歯車とボタンが余白の内側() {
+        showInset { preview(recipients(3)) }
+        assertInside("photo", rule.onNodeWithTag(TAG_PHOTO).getUnclippedBoundsInRoot())
+        assertInside("gear", rule.onNodeWithContentDescription("設定").getUnclippedBoundsInRoot())
+        val retry = rule.onNodeWithText("やり直す").getUnclippedBoundsInRoot()
+        assertInside("retry", retry)
+        near(rootHeight() - bottomInset - 16.dp, retry.bottom)
+    }
+
+    @Test
+    fun CancelWindowの取り消すは余白の内側の下端から16dp() {
+        showInset { CancelWindowScreen(null, 3, ButtonSize.LARGE) {} }
+        val cancel = rule.onNodeWithText("取り消す").getUnclippedBoundsInRoot()
+        assertInside("cancel", cancel)
+        near(rootHeight() - bottomInset - 16.dp, cancel.bottom)
+    }
+
+    @Test
+    fun 文字だけの画面は余白の内側() {
+        showInset { SetupRequiredScreen {} }
+        assertInside("gear", rule.onNodeWithContentDescription("設定").getUnclippedBoundsInRoot())
+    }
+
+    @Test
+    fun PermissionDeniedのボタンと歯車は余白の内側() {
+        showInset { PermissionDeniedScreen(ButtonSize.XLARGE, {}, {}) }
+        assertInside("gear", rule.onNodeWithContentDescription("設定").getUnclippedBoundsInRoot())
+        assertInside("button", rule.onNodeWithText("設定を開く").getUnclippedBoundsInRoot())
     }
 }
