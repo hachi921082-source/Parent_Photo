@@ -23,3 +23,11 @@ API 26-level emulator or device, Android 14/15 device, real Gmail app password v
 
 ## 4. Output
 Updated checklist state reported to the user (docs/detailed-spec.md is edited only via designer-lite).
+
+## Implementation notes: system bar insets fix (real-device defect, M06 Android 16)
+- `MainActivity` calls `enableEdgeToEdge()` with transparent bars. Father screens keep the background / camera feed / photo backdrop full-screen and put all content inside `Modifier.fatherInsetsPadding()` (`WindowInsets.safeDrawing`). ds 3.4 numbers (30 % photo minimum, 32 dp shutter gap, 16 dp margins) are therefore measured against the inset-adjusted area.
+- Settings screens: both `Scaffold`s use `contentWindowInsets = safeDrawing` (includes IME), top bars use the safeDrawing top/horizontal insets.
+- `SystemBarIcons` sets status/navigation bar icon appearance per screen: light icons on Camera / OutboxFull / Capturing, dark icons everywhere else (including settings).
+- Test hook: `LocalInsetsOverride` replaces the real insets so emulator tests (API 26, no insets) can assert inset behaviour.
+- Look/wording choices (recommended option taken): (1) Preview/CancelWindow/Sending photo area starts below the status bar (photo does not extend under it); (2) camera feed extends under the bars with white icons, no extra scrim; (3) nav bar icons follow the same light/dark rule as the status bar; (4) the gear sits 4 dp below the status bar inset, as the other top-right paddings.
+- Status: emulator (API 26) verified; M06 device verification pending (device was locked at the keyguard during the session).
