@@ -25,7 +25,7 @@ Until implemented, use fakes. Do not define Room/mail internals here.
 - Timers and the send job live in `viewModelScope`; they keep running in background (confirmed). If the process dies, startup recovery (pending outbox-queue) handles the item.
 
 ## 3. Feedback (`notify/Feedback`)
-- On entering Sent only (exactly once per entry; not replayed on return from background): `VibrationEffect.createOneShot(300, DEFAULT_AMPLITUDE)` via `Vibrator`/`VibratorManager`, and `ToneGenerator(STREAM_NOTIFICATION, 80)` `startTone(TONE_PROP_ACK, 200)`, with the generator released (`release()`) 300 ms after `startTone` (delayed in the ViewModel/app scope, not on the main thread's blocking path), together. If `AudioManager.ringerMode != RINGER_MODE_NORMAL`, vibration only. Permission `VIBRATE` in manifest.
+- On entering Sent only (exactly once per entry; not replayed on return from background): `VibrationEffect.createOneShot(600, 255)` via `Vibrator`/`VibratorManager`, and `ToneGenerator(STREAM_NOTIFICATION, 80)` `startTone(TONE_PROP_ACK, 200)`, with the generator released (`release()`) 300 ms after `startTone` (delayed in the ViewModel/app scope, not on the main thread's blocking path), together. If `AudioManager.ringerMode != RINGER_MODE_NORMAL`, vibration only. Permission `VIBRATE` in manifest.
 - No feedback for QueuedNotice or worker deliveries.
 - Screen-keep-on is not adopted.
 
