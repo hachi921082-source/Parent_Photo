@@ -10,6 +10,8 @@ object Constants {
     const val CAPTURE_FAILURE_MESSAGE_MS = 3000L
     // Preview 中に満杯で送り先を拒否した時の案内の表示時間(Q65)
     const val OUTBOX_FULL_NOTICE_MS = 3000L
+    // 「未送信 N件」バッジのタップで回線が無い時の案内の表示時間(badge-tap-retry)
+    const val OFFLINE_NOTICE_MS = 3000L
 
     // SMTPタイムアウト(ミリ秒)
     const val SMTP_CONNECT_TIMEOUT_MS = 15_000
