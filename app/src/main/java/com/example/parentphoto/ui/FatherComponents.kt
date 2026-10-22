@@ -4,6 +4,7 @@ import android.graphics.BitmapFactory
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
@@ -31,6 +32,7 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
@@ -190,11 +192,17 @@ internal fun SettingsIcon(tint: Color, onLongPress: () -> Unit, modifier: Modifi
 
 /** 左上のバッジ。「未送信 N件」(N > 0)の下に「送れていません M件」(M > 0、警告色)、8 dp 間隔 */
 @Composable
-internal fun Badges(unsent: Int, attention: Int, modifier: Modifier = Modifier) {
+internal fun Badges(unsent: Int, attention: Int, modifier: Modifier = Modifier, onUnsentTap: () -> Unit = {}) {
     if (unsent <= 0 && attention <= 0) return
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         if (unsent > 0) {
-            Badge(stringResource(R.string.badge_unsent, unsent), DARK_BOX)
+            // 押せるのは「未送信」だけ。丸い箱の大きさ・位置は変えない。押せる範囲は clickable の既定の
+            // 最小タッチ領域(48 dp)で広がる。広がった分は呼び出し側の余白(16 dp)と箱どうしの間隔(8 dp)の内側に収まる
+            Badge(
+                stringResource(R.string.badge_unsent, unsent),
+                DARK_BOX,
+                Modifier.clickable(role = Role.Button, onClick = onUnsentTap),
+            )
         }
         if (attention > 0) {
             Badge(stringResource(R.string.badge_attention, attention), LocalExtraColors.current.warning)
@@ -203,14 +211,14 @@ internal fun Badges(unsent: Int, attention: Int, modifier: Modifier = Modifier) 
 }
 
 @Composable
-private fun Badge(text: String, background: Color) {
+private fun Badge(text: String, background: Color, modifier: Modifier = Modifier) {
     Text(
         text = text,
         color = Color.White,
         fontSize = BADGE_TEXT,
         lineHeight = LINE_HEIGHT,
         maxLines = 1,
-        modifier = Modifier
+        modifier = modifier
             .background(background, CircleShape)
             .padding(horizontal = 12.dp, vertical = 6.dp),
     )
