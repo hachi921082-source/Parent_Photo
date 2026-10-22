@@ -10,7 +10,7 @@ Source: GitHub issue #1. Branch `feature/badge-tap-retry`. ds sections: 3.4, 6.2
 - "送れていません M件" badge: not tappable, unchanged.
 
 ## UI
-- `Badges(..., onUnsentTap)`: only the unsent badge gets `clickable(role = Button)`. Pill size/position unchanged. Touch area: Compose's default minimum touch target (48 dp) expands the hit area; the expansion stays inside the 16 dp outer padding and the 8 dp gap.
+- `Badges(..., onUnsentTap)`: only the unsent badge gets `clickable(role = Button)`. Pill size/position unchanged. Touch area: the pill itself (about 38-44 dp tall); NOT expanded to 48 dp. Enlarging it would change layout/look and is a user decision.
 - `CameraScreen(offlineNoticeVisible, onUnsentBadgeTap)`: notice via existing `OverlayMessage`, centered (same place and style as the capture failure message).
 
 ## Files
@@ -22,6 +22,6 @@ ui/MainPorts.kt, ui/MainViewModelFactory.kt, ui/MainViewModel.kt, ui/UiState.kt,
 
 ## Implementation notes
 - Wording: "ネットにつながっていません" (string `offline_notice`), 3000 ms, centered overlay.
-- Touch target relies on Compose's default 48 dp minimum touch target, not on layout growth, so existing geometry tests (8 dp gap, 16 dp margins) stay valid. Not verified on a device.
+- Hit area is the pill size (about 38-44 dp tall), below the 48 dp guideline; plain pointerInput/clickable do not expand it (only Material components do). Kept so existing geometry stays unchanged. Reaching 48 dp is a layout/look decision for the user.
 - Online-but-no-internet passes the check; the send then fails and items stay queued (no harm).
 - Modifier structure: the tap (`pointerInput`) and `semantics { role = Button; onClick }` sit on an outer `Box` around the pill `Text`, not on the Text chain and not via `clickable` (which merges descendants and would widen the Text node bounds by the 6/12 dp padding, breaking the geometry tests).
