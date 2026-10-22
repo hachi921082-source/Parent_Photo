@@ -24,3 +24,4 @@ ui/MainPorts.kt, ui/MainViewModelFactory.kt, ui/MainViewModel.kt, ui/UiState.kt,
 - Wording: "ネットにつながっていません" (string `offline_notice`), 3000 ms, centered overlay.
 - Touch target relies on Compose's default 48 dp minimum touch target, not on layout growth, so existing geometry tests (8 dp gap, 16 dp margins) stay valid. Not verified on a device.
 - Online-but-no-internet passes the check; the send then fails and items stay queued (no harm).
+- Modifier structure: the tap (`pointerInput`) and `semantics { role = Button; onClick }` sit on an outer `Box` around the pill `Text`, not on the Text chain and not via `clickable` (which merges descendants and would widen the Text node bounds by the 6/12 dp padding, breaking the geometry tests).
