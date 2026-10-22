@@ -61,6 +61,15 @@ class MainViewModelTest {
         var sendGate = CompletableDeferred<MailResult>()
         val queued = mutableListOf<Pair<String, MailResult>>()
 
+        // バッジタップの再送: true なら開始、false なら回線なし
+        var retryOnline = true
+        var retryCalls = 0
+
+        override fun retryNow(): Boolean {
+            retryCalls++
+            return retryOnline
+        }
+
         override fun setPreviewExists(exists: Boolean) {
             previewExistsHistory += exists
             events += "preview=$exists"
@@ -525,6 +534,37 @@ class MainViewModelTest {
         assertEquals(before, vm.state())
         assertTrue(outbox.previewExists)
         assertEquals(capturer.file, vm.ui.value.photoFile)
+    }
+
+    @Test
+    fun 未送信バッジのタップで回線があれば再送を始め案内は出さない() = runTest(dispatcher) {
+        val vm = ready(newVm())
+        vm.onUnsentBadgeTapped()
+        assertEquals(1, outbox.retryCalls)
+        assertFalse(vm.ui.value.offlineNoticeVisible)
+    }
+
+    @Test
+    fun 未送信バッジのタップで回線が無ければ案内をちょうど3000ms出す() = runTest(dispatcher) {
+        val vm = ready(newVm())
+        outbox.retryOnline = false
+        vm.onUnsentBadgeTapped()
+        assertTrue(vm.ui.value.offlineNoticeVisible)
+        advanceTimeBy(2999)
+        runCurrent()
+        assertTrue(vm.ui.value.offlineNoticeVisible)
+        advanceTimeBy(1)
+        runCurrent()
+        assertFalse(vm.ui.value.offlineNoticeVisible)
+    }
+
+    @Test
+    fun 未送信バッジのタップはCameraとOutboxFull以外では無視する() = runTest(dispatcher) {
+        val vm = ready(newVm())
+        toPreview(vm)
+        vm.onUnsentBadgeTapped()
+        assertEquals(0, outbox.retryCalls)
+        assertFalse(vm.ui.value.offlineNoticeVisible)
     }
 
     @Test
