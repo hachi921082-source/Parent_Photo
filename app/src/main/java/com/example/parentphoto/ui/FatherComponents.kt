@@ -4,7 +4,6 @@ import android.graphics.BitmapFactory
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
@@ -32,6 +31,9 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -196,12 +198,15 @@ internal fun Badges(unsent: Int, attention: Int, modifier: Modifier = Modifier, 
     if (unsent <= 0 && attention <= 0) return
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         if (unsent > 0) {
-            // 押せるのは「未送信」だけ。丸い箱の大きさ・位置は変えない。押せる範囲は clickable の既定の
+            // 押せるのは「未送信」だけ。丸い箱の大きさ・位置は変えない。押せる範囲は 最小タッチ領域の既定の
             // 最小タッチ領域(48 dp)で広がる。広がった分は呼び出し側の余白(16 dp)と箱どうしの間隔(8 dp)の内側に収まる
             Badge(
                 stringResource(R.string.badge_unsent, unsent),
                 DARK_BOX,
-                Modifier.clickable(role = Role.Button, onClick = onUnsentTap),
+                Modifier
+                    // clickable は子の意味情報を束ねて文字の範囲が広がるため、タップ検出と操作の意味情報を別々に付ける
+                    .pointerInput(onUnsentTap) { detectTapGestures { onUnsentTap() } }
+                    .semantics { role = Role.Button; onClick { onUnsentTap(); true } },
             )
         }
         if (attention > 0) {
@@ -212,16 +217,19 @@ internal fun Badges(unsent: Int, attention: Int, modifier: Modifier = Modifier, 
 
 @Composable
 private fun Badge(text: String, background: Color, modifier: Modifier = Modifier) {
-    Text(
-        text = text,
-        color = Color.White,
-        fontSize = BADGE_TEXT,
-        lineHeight = LINE_HEIGHT,
-        maxLines = 1,
-        modifier = modifier
-            .background(background, CircleShape)
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-    )
+    // 外側の Box に操作を付け、文字(Text)の範囲は丸い箱の内側のまま保つ
+    Box(modifier) {
+        Text(
+            text = text,
+            color = Color.White,
+            fontSize = BADGE_TEXT,
+            lineHeight = LINE_HEIGHT,
+            maxLines = 1,
+            modifier = Modifier
+                .background(background, CircleShape)
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+        )
+    }
 }
 
 /** 縮小済みの写真を読み込んで全体が見えるように表示する。読み込み中は何も出さない */
