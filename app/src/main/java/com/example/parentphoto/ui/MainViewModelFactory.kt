@@ -9,6 +9,7 @@ import com.example.parentphoto.ParentPhotoApp
 import com.example.parentphoto.camera.CameraController
 import com.example.parentphoto.camera.CameraPermission
 import com.example.parentphoto.camera.PreviewFiles
+import com.example.parentphoto.mail.ConnectivityChecker
 import com.example.parentphoto.mail.ItemId
 import com.example.parentphoto.mail.MailResult
 import com.example.parentphoto.mail.SmtpSender
@@ -16,9 +17,11 @@ import com.example.parentphoto.notify.Feedback
 import com.example.parentphoto.notify.NotificationPermissionRequester
 import com.example.parentphoto.outbox.OutboxRepository
 import com.example.parentphoto.outbox.Phase
+import com.example.parentphoto.outbox.WorkScheduler
 import com.example.parentphoto.settings.Settings
 import com.example.parentphoto.settings.SettingsRepository
 import com.example.parentphoto.settings.SetupState
+import com.example.parentphoto.util.Connectivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -35,7 +38,13 @@ class MainViewModelFactory(private val app: ParentPhotoApp) : ViewModelProvider.
         require(modelClass.isAssignableFrom(MainViewModel::class.java)) { "unknown ViewModel: $modelClass" }
         val vm = MainViewModel(
             settingsSource = RepositorySettings(app.settingsRepository),
-            outbox = RepositoryOutbox(app.outboxRepository, app.smtpSender, app.appScope),
+            outbox = RepositoryOutbox(
+                app.outboxRepository,
+                app.smtpSender,
+                app.workScheduler,
+                ConnectivityChecker { Connectivity.isClearlyOffline(app) },
+                app.appScope,
+            ),
             capturer = ControllerCapturer(app.cameraController, app.previewFiles),
             cameraPermission = ContextCameraPermission(app),
             notificationPermission = NotificationPermissionRequester(app, app.settingsRepository),
@@ -69,6 +78,8 @@ private class RepositorySettings(private val repo: SettingsRepository) : SendFlo
 private class RepositoryOutbox(
     private val repo: OutboxRepository,
     private val sender: SmtpSender,
+    private val scheduler: WorkScheduler,
+    private val connectivity: ConnectivityChecker,
     // プロセスと同じ寿命のスコープ(画面が終わっても続ける処理用)
     private val appScope: CoroutineScope,
 ) : SendFlowOutbox {
@@ -88,6 +99,13 @@ private class RepositoryOutbox(
     // 設定の読み出しとパスワードの復号を含むので IO で行う
     override suspend fun sendForeground(itemId: ItemId): MailResult =
         withContext(Dispatchers.IO) { sender.sendForeground(itemId) }
+
+    // 回線が明らかに無ければ試行しない。あれば待ち時間(バックオフ)を解いてワーカーをすぐ動かす
+    override fun retryNow(): Boolean {
+        if (connectivity.isClearlyOffline()) return false
+        scheduler.triggerNow()
+        return true
+    }
 
     override suspend fun markSent(itemId: ItemId) = repo.markSent(itemId)
 
