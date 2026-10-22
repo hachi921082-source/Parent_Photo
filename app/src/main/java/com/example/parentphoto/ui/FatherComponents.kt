@@ -198,8 +198,8 @@ internal fun Badges(unsent: Int, attention: Int, modifier: Modifier = Modifier, 
     if (unsent <= 0 && attention <= 0) return
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         if (unsent > 0) {
-            // 押せるのは「未送信」だけ。丸い箱の大きさ・位置は変えない。押せる範囲は 最小タッチ領域の既定の
-            // 最小タッチ領域(48 dp)で広がる。広がった分は呼び出し側の余白(16 dp)と箱どうしの間隔(8 dp)の内側に収まる
+            // 押せるのは「未送信」だけ。丸い箱の大きさ・位置は変えない。押せる範囲は丸い箱そのもの
+            // (高さ約 38〜44 dp)。48 dp には広げていない(広げると配置が変わるので見た目の判断が要る)
             Badge(
                 stringResource(R.string.badge_unsent, unsent),
                 DARK_BOX,
