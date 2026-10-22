@@ -58,6 +58,7 @@ class FatherScreensTest {
     private var longPresses = 0
     private var recipientTaps = mutableListOf<String>()
     private var retakes = 0
+    private var badgeTaps = 0
     private var openSettings = 0
 
     private fun recipients(n: Int) = (1..n).map { Recipient("$it", "送り先$it", "r$it@example.com") }
@@ -67,12 +68,14 @@ class FatherScreensTest {
     }
 
     @Composable
-    private fun camera(state: UiState, unsent: Int = 0, attention: Int = 0, failure: Boolean = false) {
+    private fun camera(state: UiState, unsent: Int = 0, attention: Int = 0, failure: Boolean = false, offline: Boolean = false) {
         CameraScreen(
             state = state,
             unsentCount = unsent,
             attentionCount = attention,
             captureFailureVisible = failure,
+            offlineNoticeVisible = offline,
+            onUnsentBadgeTap = { badgeTaps++ },
             onShutter = { shutterTaps++ },
             onSettingsLongPress = { longPresses++ },
             cameraFeed = { Box(Modifier.fillMaxSize()) },
@@ -143,6 +146,20 @@ class FatherScreensTest {
         assertEquals(1, shutterTaps)
         settingsIconCount(1)
         noAttentionWord()
+    }
+
+    @Test
+    fun 未送信バッジだけが押せて案内は回線なしの時に出る() {
+        var offline by mutableStateOf(false)
+        show { camera(UiState.Camera, unsent = 2, attention = 1, offline = offline) }
+        rule.onNodeWithText("送れていません 1件").performClick()
+        rule.runOnIdle { assertEquals(0, badgeTaps) }
+        rule.onNodeWithText("未送信 2件").performClick()
+        rule.runOnIdle { assertEquals(1, badgeTaps) }
+        rule.onAllNodesWithText("ネットにつながっていません").assertCountEquals(0)
+        offline = true
+        rule.waitForIdle()
+        rule.onNodeWithText("ネットにつながっていません").assertIsDisplayed()
     }
 
     @Test
