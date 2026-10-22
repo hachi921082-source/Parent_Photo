@@ -41,6 +41,11 @@ interface SendFlowOutbox {
      */
     suspend fun createItem(recipientId: String, capturedAtMillis: Long, previewFile: File): ItemId
 
+    /**
+     * 「未送信 N件」バッジのタップ: 回線が明らかに無ければ送らず false、あればすぐ再送を始めて true。
+     */
+    fun retryNow(): Boolean
+
     /** 取り消す: 行と outbox のファイルを消す(cache の写真は残す) */
     suspend fun deleteItem(itemId: ItemId)
 
