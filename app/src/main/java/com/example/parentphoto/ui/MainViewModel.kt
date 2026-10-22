@@ -72,6 +72,7 @@ class MainViewModel(
 
     private val failureMessageTimer = DeadlineTimer(viewModelScope, elapsedRealtime)
     private val outboxFullNoticeTimer = DeadlineTimer(viewModelScope, elapsedRealtime)
+    private val offlineNoticeTimer = DeadlineTimer(viewModelScope, elapsedRealtime)
 
     // Sent / QueuedNotice の2秒
     private val resultScreenTimer = DeadlineTimer(viewModelScope, elapsedRealtime)
@@ -123,6 +124,7 @@ class MainViewModel(
     fun onResume() {
         failureMessageTimer.onResume()
         outboxFullNoticeTimer.onResume()
+        offlineNoticeTimer.onResume()
         resultScreenTimer.onResume()
         // スリープで delay が止まっていた場合に備え、残り時間を時計から計算し直す
         (state as? UiState.CancelWindow)?.let { runUndoCountdown(it.itemId) }
@@ -238,6 +240,20 @@ class MainViewModel(
                 // 消せなかった行は次回起動の復旧で送られる(取り消しの取りこぼしは受け入れる)
                 flowLog("deleteItem failed id=${s.itemId}: ${e.javaClass.simpleName}")
             }
+        }
+    }
+
+    /**
+     * 「未送信 N件」バッジのタップ。バッジが出る Camera / OutboxFull の時だけ受ける。
+     * 回線が明らかに無ければ案内を3000 ms出し(連続タップは3000 msをやり直す)、あれば再送をすぐ始める。
+     */
+    fun onUnsentBadgeTapped() {
+        val s = state
+        if (s != UiState.Camera && s != UiState.OutboxFull) return
+        if (outbox.retryNow()) return
+        model.update { it.copy(offlineNoticeVisible = true) }
+        offlineNoticeTimer.start(Constants.OFFLINE_NOTICE_MS) {
+            model.update { it.copy(offlineNoticeVisible = false) }
         }
     }
 
