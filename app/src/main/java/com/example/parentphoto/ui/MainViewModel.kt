@@ -46,6 +46,8 @@ class MainViewModel(
     private val feedback: SuccessFeedback = SuccessFeedback {},
     // 送信の流れの異常を Logcat に残す(項目idのみ)
     private val flowLog: (String) -> Unit = {},
+    // 回線の状態(カメラ画面の接続表示)。既定は常にオンライン
+    private val connectivity: ConnectivitySource = AlwaysOnline,
 ) : ViewModel() {
 
     private val model = MutableStateFlow(MainUiModel())
@@ -111,6 +113,9 @@ class MainViewModel(
         }
         viewModelScope.launch {
             outbox.attentionCount.collect { m -> model.update { it.copy(attentionCount = m) } }
+        }
+        viewModelScope.launch {
+            connectivity.online.collect { on -> model.update { it.copy(online = on) } }
         }
     }
 
