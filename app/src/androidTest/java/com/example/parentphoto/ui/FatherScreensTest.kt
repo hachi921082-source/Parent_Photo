@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.height
+import androidx.compose.ui.unit.width
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.example.parentphoto.settings.ButtonSize
 import com.example.parentphoto.settings.Recipient
@@ -379,18 +380,47 @@ class FatherScreensTest {
     @Test
     fun CancelWindowは残り秒数と取り消すだけ() {
         var cancels = 0
-        show { CancelWindowScreen(null, 3, ButtonSize.LARGE) { cancels++ } }
+        show { CancelWindowScreen(null, 3, ButtonSize.LARGE, 3) { cancels++ } }
         rule.onNodeWithText("3秒後に送ります").assertIsDisplayed()
         rule.onNodeWithText("取り消す").performClick()
         assertEquals(1, cancels)
         rule.onAllNodesWithText("やり直す").assertCountEquals(0)
         settingsIconCount(0)
-        near(rootHeight() - 16.dp, rule.onNodeWithText("取り消す").getUnclippedBoundsInRoot().bottom)
+        // 取り消すは Preview のやり直すと同じ最上段
+        near(16.dp, rule.onNodeWithText("取り消す").getUnclippedBoundsInRoot().top)
+    }
+
+    @Test
+    fun 写真は送り先を押してもPreviewとCancelWindowとSendingで動かない() {
+        var mode by mutableStateOf(0)
+        var n by mutableStateOf(1)
+        var size by mutableStateOf(ButtonSize.STANDARD)
+        show {
+            when (mode) {
+                0 -> preview(recipients(n), size)
+                1 -> CancelWindowScreen(null, 3, size, n) {}
+                else -> SendingScreen(null, size, n)
+            }
+        }
+        for (s in ButtonSize.values()) for (count in listOf(1, 3, 4, 6)) {
+            size = s; n = count; mode = 0
+            rule.waitForIdle()
+            val p = rule.onNodeWithTag(TAG_PHOTO).getUnclippedBoundsInRoot()
+            for (m in 1..2) {
+                mode = m
+                rule.waitForIdle()
+                val b = rule.onNodeWithTag(TAG_PHOTO).getUnclippedBoundsInRoot()
+                near(p.top, b.top)
+                near(p.height, b.height)
+                near(p.left, b.left)
+                near(p.width, b.width)
+            }
+        }
     }
 
     @Test
     fun Sendingは送信中だけ() {
-        show { SendingScreen(null) }
+        show { SendingScreen(null, ButtonSize.LARGE, 3) }
         rule.onNodeWithText("送信中...").assertIsDisplayed()
         rule.onAllNodesWithText("取り消す").assertCountEquals(0)
         rule.onAllNodesWithText("やり直す").assertCountEquals(0)
@@ -535,11 +565,11 @@ class FatherScreensTest {
     }
 
     @Test
-    fun CancelWindowの取り消すは余白の内側の下端から16dp() {
-        showInset { CancelWindowScreen(null, 3, ButtonSize.LARGE) {} }
+    fun CancelWindowの取り消すは余白の内側の上端から16dp() {
+        showInset { CancelWindowScreen(null, 3, ButtonSize.LARGE, 3) {} }
         val cancel = rule.onNodeWithText("取り消す").getUnclippedBoundsInRoot()
         assertInside("cancel", cancel)
-        near(rootHeight() - bottomInset - 16.dp, cancel.bottom)
+        near(topInset + 16.dp, cancel.top)
     }
 
     @Test
