@@ -62,6 +62,7 @@ fun MainScreen(model: MainUiModel, viewModel: MainViewModel, cameraController: C
                 state = s,
                 unsentCount = model.unsentCount,
                 attentionCount = model.attentionCount,
+                online = model.online,
                 captureFailureVisible = model.captureFailureMessageVisible,
                 onShutter = viewModel::onShutter,
                 onSettingsLongPress = viewModel::onSettingsLongPress,
