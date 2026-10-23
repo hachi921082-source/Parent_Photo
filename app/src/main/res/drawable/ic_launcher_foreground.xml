@@ -4,12 +4,32 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- カメラ本体 -->
+    <!-- カメラ本体(白)。中央の66 dpの内側に収める -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M30,40h10l3,-5h22l3,5h10a4,4 0,0 1,4 4v28a4,4 0,0 1,-4 4H30a4,4 0,0 1,-4 -4V44a4,4 0,0 1,4 -4z" />
+        android:pathData="M25,46h8l3,-5h16l3,5h8a4,4 0,0 1,4 4v28a4,4 0,0 1,-4 4H25a4,4 0,0 1,-4 -4V50a4,4 0,0 1,4 -4z" />
     <!-- レンズ -->
     <path
         android:fillColor="#6750A4"
-        android:pathData="M54,58m-10,0a10,10 0,1 1,20 0a10,10 0,1 1,-20 0" />
+        android:pathData="M45,66m-11,0a11,11 0,1 1,22 0a11,11 0,1 1,-22 0" />
+    <path
+        android:fillColor="#D0BCFF"
+        android:pathData="M45,66m-6,0a6,6 0,1 1,12 0a6,6 0,1 1,-12 0" />
+    <!-- 右上の送信バッジ: 背景色の縁取りでカメラから切り離す -->
+    <path
+        android:fillColor="#6750A4"
+        android:pathData="M72,40m-18,0a18,18 0,1 1,36 0a18,18 0,1 1,-36 0" />
+    <path
+        android:fillColor="#FF8F00"
+        android:pathData="M72,40m-15,0a15,15 0,1 1,30 0a15,15 0,1 1,-30 0" />
+    <!-- 封筒(白)と、ふたの折り線 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M63,34h18a2,2 0,0 1,2 2v11a2,2 0,0 1,-2 2H63a2,2 0,0 1,-2 -2V36a2,2 0,0 1,2 -2z" />
+    <path
+        android:strokeColor="#FF8F00"
+        android:strokeWidth="1.8"
+        android:strokeLineJoin="round"
+        android:strokeLineCap="round"
+        android:pathData="M62.5,36l9.5,7l9.5,-7" />
 </vector>
