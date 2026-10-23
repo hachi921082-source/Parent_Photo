@@ -87,9 +87,10 @@ fun MainScreen(model: MainUiModel, viewModel: MainViewModel, cameraController: C
                 photoFile = model.photoFile,
                 secondsLeft = s.secondsLeft,
                 buttonSize = model.buttonSize,
+                recipientCount = model.recipients.size,
                 onCancel = viewModel::onCancelUndo,
             )
-            is UiState.Sending -> SendingScreen(model.photoFile)
+            is UiState.Sending -> SendingScreen(model.photoFile, model.buttonSize, model.recipients.size)
             UiState.Sent -> SentScreen()
             UiState.QueuedNotice -> QueuedNoticeScreen()
         }

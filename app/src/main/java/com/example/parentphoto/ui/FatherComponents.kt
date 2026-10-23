@@ -43,6 +43,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
@@ -126,10 +127,11 @@ internal fun FatherFilledButton(
     size: ButtonSize,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    minHeight: Dp = size.dp.dp, // 送り先が多い時だけ設定より低くする(issue #4)
 ) {
     Button(
         onClick = onClick,
-        modifier = modifier.fillMaxWidth().heightIn(min = size.dp.dp),
+        modifier = modifier.fillMaxWidth().heightIn(min = minHeight),
         shape = MaterialTheme.shapes.medium,
     ) { ButtonLabel(text) }
 }
