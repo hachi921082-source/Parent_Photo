@@ -103,6 +103,10 @@ class MainViewModelTest {
         }
     }
 
+    private class FakeConnectivity : ConnectivitySource {
+        override val online = MutableStateFlow(true)
+    }
+
     private class FakeCapturer : PhotoCapturer {
         val file = File("preview.jpg")
         var next = CompletableDeferred<Result<File>>()
@@ -135,6 +139,7 @@ class MainViewModelTest {
     private val settings = FakeSettings()
     private val outbox = FakeOutbox()
     private val capturer = FakeCapturer()
+    private val connectivity = FakeConnectivity()
     private val permission = FakePermission()
     private val logs = mutableListOf<String>()
 
@@ -174,6 +179,7 @@ class MainViewModelTest {
         cameraLog = { logs += it },
         feedback = { feedbackCount++ },
         flowLog = { logs += it },
+        connectivity = connectivity,
     )
 
     /** 設定読み込みと復旧が済んだ状態にする */
@@ -292,6 +298,28 @@ class MainViewModelTest {
             assertEquals(r, recipients)
             assertEquals(ButtonSize.XLARGE, buttonSize)
         }
+    }
+
+    @Test
+    fun 回線の状態を流す_既定はオンライン() = runTest(dispatcher) {
+        val vm = ready(newVm())
+        assertTrue(vm.ui.value.online)
+        connectivity.online.value = false
+        runCurrent()
+        assertFalse(vm.ui.value.online)
+        connectivity.online.value = true
+        runCurrent()
+        assertTrue(vm.ui.value.online)
+    }
+
+    @Test
+    fun 圏外でも状態遷移とシャッターは変わらない() = runTest(dispatcher) {
+        connectivity.online.value = false
+        val vm = ready(newVm())
+        assertEquals(UiState.Camera, vm.state())
+        outbox.activeCount.value = 5
+        runCurrent()
+        assertEquals(UiState.OutboxFull, vm.state())
     }
 
     // ---- 再開時の評価 ----
