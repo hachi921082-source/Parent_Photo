@@ -63,8 +63,6 @@ fun MainScreen(model: MainUiModel, viewModel: MainViewModel, cameraController: C
                 unsentCount = model.unsentCount,
                 attentionCount = model.attentionCount,
                 captureFailureVisible = model.captureFailureMessageVisible,
-                offlineNoticeVisible = model.offlineNoticeVisible,
-                onUnsentBadgeTap = viewModel::onUnsentBadgeTapped,
                 onShutter = viewModel::onShutter,
                 onSettingsLongPress = viewModel::onSettingsLongPress,
                 cameraFeed = {

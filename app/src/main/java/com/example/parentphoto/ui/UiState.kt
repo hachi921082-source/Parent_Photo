@@ -69,8 +69,6 @@ data class MainUiModel(
     val captureFailureMessageVisible: Boolean = false,
     // Preview 中に満杯で送り先を拒否した時の案内(3000 ms、Q65)
     val outboxFullNoticeVisible: Boolean = false,
-    // 「未送信 N件」のタップで回線が無かった時の案内(3000 ms、Camera / OutboxFull のみ)
-    val offlineNoticeVisible: Boolean = false,
     // 撮影済みの写真(Preview・取り消し猶予・送信中に表示する)。無ければ null
     val photoFile: File? = null,
     val unsentCount: Int = 0,

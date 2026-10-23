@@ -31,10 +31,6 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.semantics.role
-import androidx.compose.ui.semantics.onClick
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
@@ -194,20 +190,11 @@ internal fun SettingsIcon(tint: Color, onLongPress: () -> Unit, modifier: Modifi
 
 /** 左上のバッジ。「未送信 N件」(N > 0)の下に「送れていません M件」(M > 0、警告色)、8 dp 間隔 */
 @Composable
-internal fun Badges(unsent: Int, attention: Int, modifier: Modifier = Modifier, onUnsentTap: () -> Unit = {}) {
+internal fun Badges(unsent: Int, attention: Int, modifier: Modifier = Modifier) {
     if (unsent <= 0 && attention <= 0) return
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         if (unsent > 0) {
-            // 押せるのは「未送信」だけ。丸い箱の大きさ・位置は変えない。押せる範囲は丸い箱そのもの
-            // (高さ約 38〜44 dp)。48 dp には広げていない(広げると配置が変わるので見た目の判断が要る)
-            Badge(
-                stringResource(R.string.badge_unsent, unsent),
-                DARK_BOX,
-                Modifier
-                    // clickable は子の意味情報を束ねて文字の範囲が広がるため、タップ検出と操作の意味情報を別々に付ける
-                    .pointerInput(onUnsentTap) { detectTapGestures { onUnsentTap() } }
-                    .semantics { role = Role.Button; onClick { onUnsentTap(); true } },
-            )
+            Badge(stringResource(R.string.badge_unsent, unsent), DARK_BOX)
         }
         if (attention > 0) {
             Badge(stringResource(R.string.badge_attention, attention), LocalExtraColors.current.warning)
@@ -216,20 +203,17 @@ internal fun Badges(unsent: Int, attention: Int, modifier: Modifier = Modifier, 
 }
 
 @Composable
-private fun Badge(text: String, background: Color, modifier: Modifier = Modifier) {
-    // 外側の Box に操作を付け、文字(Text)の範囲は丸い箱の内側のまま保つ
-    Box(modifier) {
-        Text(
-            text = text,
-            color = Color.White,
-            fontSize = BADGE_TEXT,
-            lineHeight = LINE_HEIGHT,
-            maxLines = 1,
-            modifier = Modifier
-                .background(background, CircleShape)
-                .padding(horizontal = 12.dp, vertical = 6.dp),
-        )
-    }
+private fun Badge(text: String, background: Color) {
+    Text(
+        text = text,
+        color = Color.White,
+        fontSize = BADGE_TEXT,
+        lineHeight = LINE_HEIGHT,
+        maxLines = 1,
+        modifier = Modifier
+            .background(background, CircleShape)
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+    )
 }
 
 /** 縮小済みの写真を読み込んで全体が見えるように表示する。読み込み中は何も出さない */
