@@ -100,6 +100,8 @@ Single `MainViewModel` holds `UiState`; Compose renders one screen per state. Na
 | QueuedNotice | あとで送ります |
 | Badge, active items (shown on Camera/OutboxFull when N > 0) | 未送信 N件 |
 | Badge, 要確認 (separate, warning color, shown when M > 0) | 送れていません M件 |
+| Connectivity indicator, online (Camera/OutboxFull/Capturing) | 撮影してすぐ送ります |
+| Connectivity indicator, offline | 現在圏外なので後で送ります |
 | OutboxFull guidance | 送れていない写真が5枚あります。ネットワークを確認してください |
 | SetupRequired | 設定が必要です (no button) |
 | PermissionDenied guidance [ASSUMPTION wording] | カメラの使用を許可してください |
@@ -129,7 +131,7 @@ Theme: Material3 default light color scheme (static, no dynamic color). Tokens u
 - Loading: full-screen `background`, nothing else, no timeout.
 - SetupRequired: `background`, "設定が必要です" centered vertically and horizontally (36 sp); settings icon top-right (`#49454F`, same as Preview) [CONFIRMED by the user, Q60].
 - PermissionDenied: `background`, guidance text (36 sp) centered above, 設定を開く button (filled primary, father button size level, full width, 16 dp margins) below it; settings icon top-right (`#49454F`, same as Preview) [CONFIRMED by the user, Q60].
-- Camera: full-screen live PreviewView. Shutter: 72 dp circle, bottom-center, 32 dp above the bottom edge, white fill with `#1C1B1F` 4 dp ring. Badges top-left (below the status bar inset, 16 dp margin): dark pill = `#000000` at 60 percent alpha, white 20 sp text, 12 dp horizontal and 6 dp vertical padding; "未送信 N件" above, "送れていません M件" below, 8 dp apart; the warning badge uses opaque background `#E65100` with white text. Settings icon top-right, white at 70 percent alpha. Failure message (2.3): centered box, `#000000` 60 percent alpha background, white 36 sp text, 16 dp padding, 16 dp rounded corners.
+- Camera: full-screen live PreviewView. Shutter: 72 dp circle, bottom-center, 32 dp above the bottom edge, white fill with `#1C1B1F` 4 dp ring. Badges top-left (below the status bar inset, 16 dp margin): dark pill = `#000000` at 60 percent alpha, white 20 sp text, 12 dp horizontal and 6 dp vertical padding; "未送信 N件" above, "送れていません M件" below, 8 dp apart; the warning badge uses opaque background `#E65100` with white text. Connectivity indicator (issue #3, recommended look): same dark pill as the badges (60 percent black, white text, 12 dp / 6 dp padding), 24 dp white signal-bars icon (slashed when offline) + 18 sp one-line text (wraps to 2 lines on very narrow screens), at top-left under the badge area (16 dp from the left, 108 dp from the top inset = room for two badge rows), fixed position so it never moves the badges; shown in Camera, OutboxFull and Capturing. Online/offline only (two states): online = the default network has `NET_CAPABILITY_INTERNET`, unknown = online (same semantics as 6.2). The badges stay plain ("未送信 N件"). Settings icon top-right, white at 70 percent alpha. Failure message (2.3): centered box, `#000000` 60 percent alpha background, white 36 sp text, 16 dp padding, 16 dp rounded corners.
 - OutboxFull: same as Camera (camera feed stays live); the shutter is disabled (40 percent alpha, ignores taps); the guidance text (36 sp, white) sits bottom-center directly above the shutter (16 dp gap) in a `#000000` 60 percent alpha box with 16 dp padding.
 - Capturing: Camera layout with the shutter visible but disabled (40 percent alpha); a 32 dp white `CircularProgressIndicator` centered over the camera feed; badges as in Camera; no settings icon, no other buttons.
 - Preview: `background`. Photo area at the top with `ContentScale.Fit`, taking all remaining height but at least 30 percent of the screen height. Below it a `LazyColumn` of recipient buttons (filled primary, onPrimary text, full width, 16 dp spacing; its height is limited to the space left after the photo minimum, and it scrolls), then やり直す pinned at the bottom (outlined, `secondary` text and `outline` border, same size level, 16 dp margin). Settings icon top-right (`#49454F`) over the photo. Zero recipients: text "送り先が登録されていません" (36 sp, centered) in place of the list.
@@ -193,6 +195,7 @@ Theme: Material3 default light color scheme (static, no dynamic color). Tokens u
 - Settings (address, password, host, port) are read from storage at send time (not cached across sends).
 
 ### 6.2 Offline shortcut (foreground only)
+- The same check, as a flow from `registerDefaultNetworkCallback`, drives the Camera-screen connectivity indicator (3.4).
 - Before a foreground attempt, check `ConnectivityManager.activeNetwork` has `NET_CAPABILITY_INTERNET`; if not (or null), skip the attempt and queue immediately (6.4). Otherwise attempt even if not `VALIDATED`.
 
 ### 6.3 Error classification

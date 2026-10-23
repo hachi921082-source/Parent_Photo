@@ -19,6 +19,7 @@ import com.example.parentphoto.outbox.Phase
 import com.example.parentphoto.settings.Settings
 import com.example.parentphoto.settings.SettingsRepository
 import com.example.parentphoto.settings.SetupState
+import com.example.parentphoto.util.Connectivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -44,6 +45,7 @@ class MainViewModelFactory(private val app: ParentPhotoApp) : ViewModelProvider.
             cameraLog = { Log.e(TAG_CAMERA, it) },
             feedback = Feedback(app, app.appScope),
             flowLog = { Log.w(TAG_FLOW, it) },
+            connectivity = ContextConnectivity(app),
         )
         @Suppress("UNCHECKED_CAST")
         return vm as T
@@ -96,6 +98,11 @@ private class RepositoryOutbox(
     override fun requeueAbandoned(itemId: ItemId) {
         appScope.launch { repo.requeueAbandoned(itemId) }
     }
+}
+
+/** ConnectivityManager の既定回線の変化をそのまま流す */
+private class ContextConnectivity(context: Context) : ConnectivitySource {
+    override val online: Flow<Boolean> = Connectivity.onlineFlow(context.applicationContext)
 }
 
 /** CameraController で撮影する。束ね込みは CameraView(画面側)が行う */

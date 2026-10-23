@@ -4,6 +4,7 @@ import com.example.parentphoto.mail.ItemId
 import com.example.parentphoto.mail.MailResult
 import com.example.parentphoto.settings.Settings
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 import java.io.File
 
 /*
@@ -61,6 +62,17 @@ interface SendFlowOutbox {
      * 画面のスコープは終わるので、呼んだら待たずに戻る
      */
     fun requeueAbandoned(itemId: ItemId)
+}
+
+/** 回線の状態(ds 3.4 の接続表示)。判定できないときは true(オンライン)に倒す */
+interface ConnectivitySource {
+    /** 通信できる回線があるとき true。購読の最初に今の状態を流す */
+    val online: Flow<Boolean>
+}
+
+/** 常にオンライン(テストや判定手段が無い場合の既定) */
+object AlwaysOnline : ConnectivitySource {
+    override val online: Flow<Boolean> = flowOf(true)
 }
 
 /** 撮影(ds 4.2 / 4.3)。成功時は縮小済みの preview.jpg を返す */

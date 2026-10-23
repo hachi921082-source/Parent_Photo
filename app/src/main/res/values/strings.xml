@@ -22,6 +22,8 @@
     <string name="sent">送りました！</string>
     <string name="queued_notice">あとで送ります</string>
     <string name="badge_unsent">未送信 %1$d件</string>
+    <string name="connectivity_online">撮影してすぐ送ります</string>
+    <string name="connectivity_offline">現在圏外なので後で送ります</string>
     <string name="badge_attention">送れていません %1$d件</string>
     <string name="outbox_full_guidance">送れていない写真が5枚あります。ネットワークを確認してください</string>
     <string name="setup_required">設定が必要です</string>

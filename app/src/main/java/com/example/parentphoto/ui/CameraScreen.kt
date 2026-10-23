@@ -25,6 +25,9 @@ import com.example.parentphoto.R
 internal val SHUTTER_SIZE = 72.dp
 internal val SHUTTER_BOTTOM = 32.dp
 
+// 接続表示の上端: 上余白 16 + バッジ 38 + 間隔 8 + バッジ 38 + 間隔 8
+internal val CONNECTIVITY_TOP = 108.dp
+
 /**
  * カメラ画面(Camera / OutboxFull / Capturing、ds 3.4)。cameraFeed には CameraView を渡す
  * (テストでは空の Box)。3つの状態で同じ呼び出し位置に置くので、状態が変わってもカメラは束ね直さない。
@@ -34,6 +37,7 @@ fun CameraScreen(
     state: UiState,
     unsentCount: Int,
     attentionCount: Int,
+    online: Boolean,
     captureFailureVisible: Boolean,
     onShutter: () -> Unit,
     onSettingsLongPress: () -> Unit,
@@ -52,6 +56,12 @@ fun CameraScreen(
                 unsent = unsentCount,
                 attention = attentionCount,
                 modifier = Modifier.align(Alignment.TopStart).padding(16.dp),
+            )
+
+            // バッジ2段分(各 38 dp + 間隔 8 dp)の下に固定で置く。バッジの数が変わっても動かない
+            ConnectivityIndicator(
+                online = online,
+                modifier = Modifier.align(Alignment.TopStart).padding(start = 16.dp, top = CONNECTIVITY_TOP),
             )
 
             // 撮影中は設定アイコンを出さない

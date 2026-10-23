@@ -73,6 +73,8 @@ data class MainUiModel(
     val photoFile: File? = null,
     val unsentCount: Int = 0,
     val attentionCount: Int = 0,
+    // 通信できる回線があるか。カメラ画面の接続表示に使う(判定できないときは true)
+    val online: Boolean = true,
     val recipients: List<Recipient> = emptyList(),
     val buttonSize: ButtonSize = ButtonSize.LARGE,
     val cameraPermissionRequest: Boolean = false,

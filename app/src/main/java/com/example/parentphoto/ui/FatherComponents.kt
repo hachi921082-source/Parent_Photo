@@ -9,6 +9,7 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -61,6 +62,9 @@ import java.io.File
 internal val BUTTON_TEXT = 28.sp
 internal val MESSAGE_TEXT = 36.sp
 internal val BADGE_TEXT = 20.sp
+
+// 接続表示の文字。スマホの幅(360 dp)で1行に収まる大きさ
+internal val CONNECTIVITY_TEXT = 18.sp
 
 // 行の高さ。テーマ既定(24 sp 固定)のままだと 36 sp / 28 sp の2行目が重なるので文字の大きさに比例させる
 internal val LINE_HEIGHT = 1.3.em
@@ -199,6 +203,36 @@ internal fun Badges(unsent: Int, attention: Int, modifier: Modifier = Modifier) 
         if (attention > 0) {
             Badge(stringResource(R.string.badge_attention, attention), LocalExtraColors.current.warning)
         }
+    }
+}
+
+/**
+ * 接続表示(ds 3.4)。電波アイコンと1行の案内を、バッジと同じ暗い角丸の箱に入れる。
+ * オンライン「撮影してすぐ送ります」/ 圏外「現在圏外なので後で送ります」の2通りだけ。
+ */
+@Composable
+internal fun ConnectivityIndicator(online: Boolean, modifier: Modifier = Modifier) {
+    val text = stringResource(if (online) R.string.connectivity_online else R.string.connectivity_offline)
+    Row(
+        modifier = modifier
+            .background(DARK_BOX, CircleShape)
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Icon(
+            painter = painterResource(if (online) R.drawable.ic_signal else R.drawable.ic_signal_off),
+            contentDescription = null,
+            tint = Color.White,
+            modifier = Modifier.size(24.dp),
+        )
+        Text(
+            text = text,
+            color = Color.White,
+            fontSize = CONNECTIVITY_TEXT,
+            lineHeight = LINE_HEIGHT,
+            maxLines = 2,
+        )
     }
 }
 
