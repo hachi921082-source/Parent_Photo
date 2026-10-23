@@ -67,11 +67,18 @@ class FatherScreensTest {
     }
 
     @Composable
-    private fun camera(state: UiState, unsent: Int = 0, attention: Int = 0, failure: Boolean = false) {
+    private fun camera(
+        state: UiState,
+        unsent: Int = 0,
+        attention: Int = 0,
+        failure: Boolean = false,
+        online: Boolean = true,
+    ) {
         CameraScreen(
             state = state,
             unsentCount = unsent,
             attentionCount = attention,
+            online = online,
             captureFailureVisible = failure,
             onShutter = { shutterTaps++ },
             onSettingsLongPress = { longPresses++ },
@@ -168,6 +175,40 @@ class FatherScreensTest {
         rule.onNodeWithText("送れていません 1件").assertIsDisplayed()
         rule.onAllNodesWithText("未送信", substring = true).assertCountEquals(0)
     }
+
+    @Test
+    fun 接続表示はオンラインとオフラインで文言が変わりバッジの位置は動かない() {
+        var online by mutableStateOf(true)
+        show { camera(UiState.Camera, unsent = 2, attention = 3, online = online) }
+        val badgeTop = rule.onNodeWithText("未送信 2件").getUnclippedBoundsInRoot()
+        val badgeBottom = rule.onNodeWithText("送れていません 3件").getUnclippedBoundsInRoot()
+        rule.onNodeWithText("撮影してすぐ送ります").assertIsDisplayed()
+        rule.onAllNodesWithText("現在圏外なので後で送ります").assertCountEquals(0)
+        // 2段のバッジの下で重ならない
+        val onlineBox = rule.onNodeWithText("撮影してすぐ送ります").getUnclippedBoundsInRoot()
+        assertTrue("indicator below badges", onlineBox.top >= badgeBottom.bottom + 6.dp)
+
+        online = false
+        rule.waitForIdle()
+        rule.onNodeWithText("現在圏外なので後で送ります").assertIsDisplayed()
+        rule.onAllNodesWithText("撮影してすぐ送ります").assertCountEquals(0)
+        near(badgeTop.top, rule.onNodeWithText("未送信 2件").getUnclippedBoundsInRoot().top)
+        near(badgeBottom.top, rule.onNodeWithText("送れていません 3件").getUnclippedBoundsInRoot().top)
+    }
+
+    private fun assertIndicatorAboveShutter(state: UiState) {
+        show { camera(state, unsent = 5, online = false) }
+        val ind = rule.onNodeWithText("現在圏外なので後で送ります").getUnclippedBoundsInRoot()
+        val shutter = rule.onNodeWithContentDescription("撮影").getUnclippedBoundsInRoot()
+        assertTrue("above shutter", ind.bottom < shutter.top)
+        rule.onNodeWithText("現在圏外なので後で送ります").assertIsDisplayed()
+    }
+
+    @Test
+    fun 接続表示はOutboxFullでもシャッターに重ならない() = assertIndicatorAboveShutter(UiState.OutboxFull)
+
+    @Test
+    fun 接続表示はCapturingでも出てシャッターに重ならない() = assertIndicatorAboveShutter(UiState.Capturing)
 
     @Test
     fun 警告バッジは橙色() {
