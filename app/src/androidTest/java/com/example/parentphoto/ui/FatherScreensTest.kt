@@ -251,11 +251,13 @@ class FatherScreensTest {
     }
 
     @Test
-    fun Previewは写真30パーセント以上でやり直すが最下部() {
+    fun Previewはやり直すが写真の上で6件目はスクロールで出る() {
         show { preview(recipients(6)) }
-        val h = rootHeight()
-        assertTrue(rule.onNodeWithTag(TAG_PHOTO).getUnclippedBoundsInRoot().height >= h * 0.3f - 1.dp)
-        near(h - 16.dp, rule.onNodeWithText("やり直す").getUnclippedBoundsInRoot().bottom)
+        val retake = rule.onNodeWithText("やり直す").getUnclippedBoundsInRoot()
+        val photo = rule.onNodeWithTag(TAG_PHOTO).getUnclippedBoundsInRoot()
+        near(16.dp, retake.top)
+        near(photo.top, retake.bottom + 16.dp)
+        assertTrue(photo.top >= retake.bottom)
         // 6件目はスクロールで出る
         rule.onNodeWithTag(TAG_RECIPIENTS).performScrollToIndex(5)
         rule.onNodeWithText("送り先6").assertIsDisplayed().performClick()
@@ -264,6 +266,65 @@ class FatherScreensTest {
         assertEquals(1, retakes)
         settingsIconCount(1)
         noAttentionWord()
+    }
+
+    @Test
+    fun 件数と設定ごとに写真は3件の時より小さくならない() {
+        // 同じ画面で 3 件の時の写真の高さを基準にする(1 つの compose rule で順に出し直す)
+        var n by mutableStateOf(3)
+        var size by mutableStateOf(ButtonSize.STANDARD)
+        show { preview(recipients(n), size) }
+        for (s in ButtonSize.values()) {
+            size = s
+            n = 3
+            rule.waitForIdle()
+            val base = rule.onNodeWithTag(TAG_PHOTO).getUnclippedBoundsInRoot().height
+            for (count in listOf(1, 4, 6)) {
+                n = count
+                rule.waitForIdle()
+                val h = rule.onNodeWithTag(TAG_PHOTO).getUnclippedBoundsInRoot().height
+                assertTrue("size=$s n=$count photo=$h base=$base", h >= base - 1.dp)
+                // やり直すは常に見えて、一覧は画面内
+                rule.onNodeWithText("やり直す").assertIsDisplayed()
+                rule.onNodeWithText("送り先1").assertIsDisplayed()
+            }
+        }
+    }
+
+    @Test
+    fun 大で3件までは設定の高さと間隔16のまま() {
+        var n by mutableStateOf(1)
+        show { preview(recipients(n), ButtonSize.LARGE) }
+        for (count in 1..3) {
+            n = count
+            rule.waitForIdle()
+            near(96.dp, rule.onNodeWithText("送り先1").getUnclippedBoundsInRoot().height)
+            if (count >= 2) {
+                val a = rule.onNodeWithText("送り先1").getUnclippedBoundsInRoot()
+                val b = rule.onNodeWithText("送り先2").getUnclippedBoundsInRoot()
+                near(16.dp, b.top - a.bottom)
+            }
+        }
+    }
+
+    @Test
+    fun 大で4件はボタンが縮み6件はスクロールで最後が半分切れる() {
+        var n by mutableStateOf(4)
+        show { preview(recipients(n), ButtonSize.LARGE) }
+        val h4 = rule.onNodeWithText("送り先1").getUnclippedBoundsInRoot().height
+        assertTrue("4 recipients should compress: $h4", h4 < 96.dp && h4 >= 56.dp - 1.dp)
+        rule.onNodeWithText("送り先4").assertIsDisplayed()
+
+        n = 6
+        rule.waitForIdle()
+        val list = rule.onNodeWithTag(TAG_RECIPIENTS).getUnclippedBoundsInRoot()
+        // 5 個目は一覧の下端をまたいで半分切れる。6 個目は見えない
+        val fifth = rule.onNodeWithText("送り先5").getUnclippedBoundsInRoot()
+        assertTrue("5th should be cut at list bottom: ${fifth.top} .. ${fifth.bottom}, list ${list.bottom}",
+            fifth.top < list.bottom - 8.dp && fifth.bottom > list.bottom + 8.dp)
+        rule.onAllNodesWithText("送り先6").assertCountEquals(0)
+        rule.onNodeWithTag(TAG_RECIPIENTS).performScrollToIndex(5)
+        rule.onNodeWithText("送り先6").assertIsDisplayed()
     }
 
     @Test
@@ -470,7 +531,7 @@ class FatherScreensTest {
         assertInside("gear", rule.onNodeWithContentDescription("設定").getUnclippedBoundsInRoot())
         val retry = rule.onNodeWithText("やり直す").getUnclippedBoundsInRoot()
         assertInside("retry", retry)
-        near(rootHeight() - bottomInset - 16.dp, retry.bottom)
+        near(topInset + 16.dp, retry.top)
     }
 
     @Test
