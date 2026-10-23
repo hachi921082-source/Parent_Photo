@@ -28,7 +28,7 @@ Source of truth: `docs/spec.md`, `docs/detailed-spec.md` (ds), `docs/QA.md`. Sec
 | 10 | attention-notifications | `attention-notifications/` | Notification, badges, notification permission (ds 10.1, 3.2) | `feature/attention-notifications` | done (merged; call sites are in outbox-queue PLAN-2) |
 | 11 | acceptance-verification | `acceptance-verification/` | Run ds 12 checklist, release build check | `feature/acceptance-verification` | done (merged 2026-10-21; open items listed in HANDOFF section 4 and ds 12) |
 | 12 | connectivity-indicator | `connectivity-indicator/` | Camera-screen online/offline pill with signal icon (issue #3; ds 3.1, 3.4, 6.2) | `feature/connectivity-indicator` | done (merged; JVM 191 + androidTest 151 pass on emulator; real-device check pending) |
-| 13 | preview-many-recipients | `preview-many-recipients/` | Preview: やり直す on top, recipient buttons compress at 4+, photo floor = 3-recipient photo, half-cut scroll hint (issue #4; ds 3.2, 3.4) | `feature/preview-many-recipients` | implemented (JVM 200 + androidTest 155 pass on emulator; real-device check pending) |
+| 13 | preview-many-recipients | `preview-many-recipients/` | Preview: やり直す on top, recipient buttons compress at 4+, photo floor = 3-recipient photo, half-cut scroll hint (issue #4; ds 3.2, 3.4) | `feature/preview-many-recipients` | done (merged; JVM 200 + androidTest 155 pass on emulator; real-device check pending) |
 
 (Numbers are the build order; the old numbering 5-8 became 8-11.)
 
