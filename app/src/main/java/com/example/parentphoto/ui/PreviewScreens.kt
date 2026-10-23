@@ -47,10 +47,7 @@ fun PreviewScreen(
     // 背景は全面、内容(写真・ボタン)はシステムバーの内側。写真の最小高さなどの割合も内側の領域で数える
     BoxWithConstraints(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).fatherInsetsPadding()) {
         // 一覧の寸法。3 件分の高さを上限にして、4 件以上はその中でボタンを縮める(写真は 3 件の時より小さくしない)
-        val setting = buttonSize.dp.toFloat()
-        val listLayout = PreviewListSizing.layout(
-            PreviewListSizing.availableHeight(maxHeight.value, setting), recipients.size, setting,
-        )
+        val listLayout = previewListLayout(maxHeight, recipients.size, buttonSize)
         Column(Modifier.fillMaxSize()) {
             // やり直すは写真の上、全幅の行。歯車は写真の右上のまま
             FatherOutlinedButton(
@@ -105,43 +102,67 @@ fun PreviewScreen(
     }
 }
 
-/** 取り消し猶予(ds 3.4 CancelWindow)。暗くした写真、「n秒後に送ります」、一番下に取り消す */
+/**
+ * 取り消し猶予(ds 3.4 CancelWindow)。Preview と同じ位置・大きさの暗くした写真、
+ * 一番上(Preview のやり直すと同じ行)に取り消す、写真の下に「n秒後に送ります」
+ */
 @Composable
 fun CancelWindowScreen(
     photoFile: File?,
     secondsLeft: Int,
     buttonSize: ButtonSize,
+    recipientCount: Int,
     onCancel: () -> Unit,
 ) {
-    DimmedPhotoLayout(photoFile, stringResource(R.string.cancel_window_label, secondsLeft)) {
+    DimmedPhotoLayout(photoFile, stringResource(R.string.cancel_window_label, secondsLeft), buttonSize, recipientCount) {
         FatherFilledButton(
             text = stringResource(R.string.cancel_button),
             size = buttonSize,
             onClick = onCancel,
-            modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+            modifier = Modifier.padding(start = 16.dp, end = 16.dp),
         )
     }
 }
 
-/** 前面送信中(ds 3.4 Sending)。暗くした写真と「送信中...」だけ。ボタンは無い */
+/** 前面送信中(ds 3.4 Sending)。暗くした写真(Preview と同じ位置)と「送信中...」だけ。上の行は空 */
 @Composable
-fun SendingScreen(photoFile: File?) {
-    DimmedPhotoLayout(photoFile, stringResource(R.string.sending)) {}
+fun SendingScreen(photoFile: File?, buttonSize: ButtonSize, recipientCount: Int) {
+    DimmedPhotoLayout(photoFile, stringResource(R.string.sending), buttonSize, recipientCount) {
+        Spacer(Modifier.height(buttonSize.dp.dp))
+    }
 }
 
-// Preview と同じ並びで写真を半分暗くし、その下に 36 sp のラベル、最下部に bottom
+// Preview と同じ寸法で写真を半分暗くする。写真の位置・大きさは Preview と同じ(送り先を押しても動かない)。
+// 一番上の行は top、写真の下の一覧の領域にはラベルを中央に置く
 @Composable
-private fun DimmedPhotoLayout(photoFile: File?, label: String, bottom: @Composable () -> Unit) {
-    // 背景は全面、内容(写真・ボタン)はシステムバーの内側。写真の最小高さなどの割合も内側の領域で数える
+private fun DimmedPhotoLayout(
+    photoFile: File?,
+    label: String,
+    buttonSize: ButtonSize,
+    recipientCount: Int,
+    top: @Composable () -> Unit,
+) {
     BoxWithConstraints(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).fatherInsetsPadding()) {
-        val photoMin: Dp = maxHeight * 0.3f
+        val listLayout = previewListLayout(maxHeight, recipientCount, buttonSize)
         Column(Modifier.fillMaxSize()) {
-            Box(Modifier.fillMaxWidth().weight(1f).heightIn(min = photoMin)) {
+            Spacer(Modifier.height(16.dp))
+            top()
+            Spacer(Modifier.height(16.dp))
+            Box(Modifier.fillMaxWidth().weight(1f)) {
                 PhotoView(photoFile, Modifier.fillMaxSize().testTag(TAG_PHOTO))
                 Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.5f)))
             }
-            MessageText(label, Modifier.fillMaxWidth().padding(16.dp))
-            bottom()
+            Spacer(Modifier.height(16.dp))
+            Box(Modifier.fillMaxWidth().height(listLayout.viewportHeight.dp), contentAlignment = Alignment.Center) {
+                MessageText(label, Modifier.fillMaxWidth().padding(horizontal = 16.dp))
+            }
+            Spacer(Modifier.height(16.dp))
         }
     }
+}
+
+// Preview と取り消し猶予・送信中で共有する一覧の寸法
+private fun previewListLayout(maxHeight: Dp, count: Int, buttonSize: ButtonSize): PreviewListLayout {
+    val setting = buttonSize.dp.toFloat()
+    return PreviewListSizing.layout(PreviewListSizing.availableHeight(maxHeight.value, setting), count, setting)
 }
