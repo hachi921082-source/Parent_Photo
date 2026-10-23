@@ -109,3 +109,8 @@
 - The system halves the requested amplitude on M06 (`played` 0.52 for `original` 1.00) regardless of usage; with the weak motor a single 300 ms buzz is not perceptible, hence 600 ms at amplitude 255 (Q75).
 - Rejected: leaving the usage unset (silently dropped), NOTIFICATION usage (dropped in silent mode), 3 x 300 ms pulses and 1000 ms (not chosen by the user).
 - If another phone class feels the vibration too weak or too long, adjust `Feedback.kt` (`VIBRATE_MS`, `VIBRATE_AMPLITUDE`).
+
+## D18. Badge tap (immediate resend) added, then removed (issue #1, 2026-10-22/23)
+- Added: tapping "未送信 N件" checked connectivity and called `triggerNow()` (merge 338859e).
+- Removed (user): WorkManager auto-resend already runs as soon as the network returns (observed on M06), and the father would never notice a tappable badge. Remaining value (skipping a backoff wait after a transient failure while online) is too small.
+- Instead: make the badge text say what happens (offline "未送信 N件 ネット接続時再送します", online "未送信 N件 は自動で再送されます"), together with an online/offline text indicator: issue #3 (not scheduled).
