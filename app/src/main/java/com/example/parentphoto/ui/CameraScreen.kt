@@ -35,8 +35,6 @@ fun CameraScreen(
     unsentCount: Int,
     attentionCount: Int,
     captureFailureVisible: Boolean,
-    offlineNoticeVisible: Boolean = false,
-    onUnsentBadgeTap: () -> Unit = {},
     onShutter: () -> Unit,
     onSettingsLongPress: () -> Unit,
     cameraFeed: @Composable () -> Unit,
@@ -53,7 +51,6 @@ fun CameraScreen(
             Badges(
                 unsent = unsentCount,
                 attention = attentionCount,
-                onUnsentTap = onUnsentBadgeTap,
                 modifier = Modifier.align(Alignment.TopStart).padding(16.dp),
             )
 
@@ -72,10 +69,6 @@ fun CameraScreen(
 
             if (captureFailureVisible) {
                 OverlayMessage(stringResource(R.string.capture_failure), Modifier.align(Alignment.Center))
-            }
-
-            if (offlineNoticeVisible) {
-                OverlayMessage(stringResource(R.string.offline_notice), Modifier.align(Alignment.Center))
             }
 
             if (full) {

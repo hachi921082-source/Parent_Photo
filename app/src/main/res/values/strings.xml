@@ -27,7 +27,6 @@
     <string name="setup_required">設定が必要です</string>
     <string name="permission_denied_guidance">カメラの使用を許可してください</string>
     <string name="open_settings_button">設定を開く</string>
-    <string name="offline_notice">ネットにつながっていません</string>
     <string name="capture_failure">撮影できませんでした。もう一度お試しください</string>
     <!-- 設定画面の Snackbar(ds 3.1。settings-screen で使う) -->
     <string name="snackbar_saved">保存しました</string>
