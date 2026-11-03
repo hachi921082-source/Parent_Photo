@@ -15,6 +15,7 @@
 9. ディレクトリ構成
 10. ドキュメント
 11. ライセンス
+12. Issue と Pull Request について
 
 ## 1. 特徴
 
@@ -131,3 +132,9 @@ docs/     仕様・設計判断・実装計画
 ## 11. ライセンス
 
 [MIT License](LICENSE)
+
+## 12. Issue と Pull Request について
+
+このリポジトリは個人用アプリのソースを公開しているだけです。Issue と Pull Request は受け付けていません。送られても対応しないので、改変したい場合はフォークしてご自由にお使いください（MIT License）。
+
+This repository is published as-is. Issues and pull requests are not accepted; feel free to fork it under the MIT License.
