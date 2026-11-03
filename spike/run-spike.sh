@@ -1,7 +1,7 @@
 #!/bin/bash
 # 使い方: bash spike/run-spike.sh <adb serial> <添付枚数 1|2>
 # R8 release APK(ビルド済み)を入れて起動し、Logcat(SpikeResult)の結果行を表示する。
-ADB=$HOME/AppData/Local/Android/Sdk/platform-tools/adb.exe
+ADB=${ADB:-$(cygpath -u "$LOCALAPPDATA")/Android/Sdk/platform-tools/adb.exe}
 SERIAL=$1
 N=${2:-1}
 APK=$(cygpath -w "$(dirname "$0")/app/build/outputs/apk/release/app-release.apk")
