@@ -12,7 +12,7 @@
 7. Unresolved Items
 
 ## 1. Overview
-- One-touch photo sending app for an elderly, smartphone-unfamiliar user.
+- One-touch photo sending app for elderly people who find sending photos from a smartphone hard.
 - Single component: Android app (Kotlin / Jetpack Compose). No server side.
 - The app sends mail directly over SMTP using JavaMail (com.sun.mail:android-mail), in the background (Coroutines, Dispatchers.IO).
 - UI text is Japanese. App name: FamilyPhoto (launcher label; package stays com.example.parentphoto).
