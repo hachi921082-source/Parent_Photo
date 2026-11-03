@@ -11,7 +11,7 @@ One-touch photo sending app for elderly people who find sending photos from a sm
 - UI text is Japanese.
 - Failed sends go to an app-private outbox (WorkManager auto-resend, max 5 active + 10 "要確認", batched per recipient, 3 s undo window before sending).
 - App name: FamilyPhoto (package `com.example.parentphoto`).
-- Status: all 10 features implemented and merged; acceptance run done on emulator and real device M06 (2026-10-21/22); `docs/QA.md` Q1-Q76 all resolved; remote is a private GitHub repo. Release APK is signed with the debug key (decided). Open items and working rules: `docs/HANDOFF.md`.
+- Status: all 10 features implemented and merged; acceptance run done on emulator and real device M06 (2026-10-21/22); `docs/QA.md` Q1-Q76 all resolved; remote is a public GitHub repo (MIT License, made public 2026-11-03; never commit personal data). Release APK is signed with the debug key (decided). Open items and working rules: `docs/HANDOFF.md`.
 
 ## Agent Set
 
