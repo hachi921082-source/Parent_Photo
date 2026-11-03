@@ -2,7 +2,7 @@
 
 ## About This App
 
-One-touch photo sending app for an elderly, smartphone-unfamiliar father. Authoritative spec: `docs/spec.md` (index at top; read only the needed section).
+One-touch photo sending app for elderly people who find sending photos from a smartphone hard. Authoritative spec: `docs/spec.md` (index at top; read only the needed section).
 
 - Component: Android app only (Kotlin / Jetpack Compose, CameraX, DataStore). No server; GAS was dropped.
 - Main flow: camera (full screen, one shutter button) -> preview/select ("やり直す" or a recipient button) -> "送信中..." -> "送りました！" -> camera.
