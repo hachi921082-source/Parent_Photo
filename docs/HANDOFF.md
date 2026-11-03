@@ -1,6 +1,6 @@
 # Session Handoff
 
-Resume point for a fresh conversation. Updated 2026-10-22.
+Resume point for a fresh conversation. Updated 2026-11-03.
 
 ## Index
 1. Status
@@ -15,7 +15,7 @@ Resume point for a fresh conversation. Updated 2026-10-22.
 - Badge tap-to-resend (issue #1) was merged 2026-10-22 and removed 2026-10-23 (D18). Issue #3 `connectivity-indicator` done 2026-10-23: Camera screen shows a signal icon + 「撮影してすぐ送ります」/「現在圏外なので後で送ります」 pill (fixed top-left, 108 dp below the inset); badge is plain 「未送信 N件」. JVM 191 and androidTest 151 pass (emulator API 26). Real-device check on M06 done 2026-10-23 (airplane mode ON -> 圏外 text, OFF -> 送れます text, offline shot queued as 未送信 1件, auto-resend within about 4 s of the network returning, mail arrived; user: no problem). App icon changed 2026-10-23 (white camera with an orange envelope badge on purple; `drawable/ic_launcher_foreground.xml`; user checked on M06). M06 has FamilyPhoto_20261023-185903 (repo root copy, git-ignored) with the pill, the new icon and without the badge tap; give that APK (or a newer build) to the father. Emulator now has the old spike APK (`com.example.parentphoto.spike`) installed by a review step; reinstall the app with `installDebug` when needed.
 - Issue #2 (message text on Preview / mail subject) closed as not planned on 2026-10-22 (user decision); analysis and alternatives are in the issue comment. Reopen candidates: per-recipient fixed subject suffix in settings (smallest), preset phrase buttons, voice input.
 - All 10 features are DONE and merged to `main` (`docs/plans/README.md` Status column). Acceptance run finished 2026-10-21/22: emulator API 26, real device M06 (Android 16), real mails to the user's mailbox (user confirmed in the inbox), user hands-on checks (vibration/sound, badge legibility, landscape shot). The release APK is built from the current code.
-- Git: `main` is pushed to the PRIVATE GitHub repo `hachi921082-source/Parent_Photo` (remote `origin`; initial push approved 2026-10-22; user wants it to stay private). `spike.local.properties` / `local.properties` are git-ignored and not in history; no real mailbox addresses in the repo. Working tree clean.
+- Git: `main` is pushed to the PUBLIC GitHub repo `hachi921082-source/Parent_Photo` (remote `origin`; MIT License). Made public 2026-11-03: personal data (test mailbox address, M06 serial, local user paths) was scrubbed from all history with git filter-repo, and the GitHub repo was deleted and recreated so the pre-rewrite commits are gone; issues #1-#4 were re-created then (original dates noted in each body). `spike.local.properties` / `local.properties` are git-ignored and not in history; never commit real mail addresses, device serials or personal paths.
 - Release APK: `app/build/outputs/apk/release/FamilyPhoto_20261021-223722.apk` (about 3.2 MB, R8, signed with the debug key; git-ignored; rebuild with `:app:assembleRelease`, the file name carries date-time). No app code changed after it was built (only docs).
 - Tests at last run: JVM 188+ and androidTest 148 passing (emulator API 26).
 - `docs/QA.md`: Q1-Q76 all resolved (Q1, Q2, Q8, Q10 obsolete: GAS dropped). Q73 = look/wording adopted without per-item confirmation; Q74 = swipe-away delay accepted; Q75 = 600 ms vibration; Q76 = black screen after CameraX bind failure accepted.
