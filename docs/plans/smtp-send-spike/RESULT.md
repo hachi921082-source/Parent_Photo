@@ -11,7 +11,7 @@ Status: PASS. API 26 emulator + M06 (API 36); Gmail smtp.gmail.com:465 SSL; R8 r
 ## 1. Environment
 - Library: `com.sun.mail:android-mail:1.6.7`, `android-activation:1.6.7`
 - Build: AGP 8.7.3, Kotlin 2.0.21, Gradle 8.9, JBR from Android Studio; release type `isMinifyEnabled = true`, debug key.
-- Devices: emulator `spike26` (Android 8.0, API 26, google_apis x86_64, headless, WHPX), M06 `M06-SERIAL` (Android 16, API 36).
+- Devices: emulator `spike26` (Android 8.0, API 26, google_apis x86_64, headless, WHPX), M06 (Android 16, API 36).
 
 ## 2. Findings so far
 | Step | API 26 emulator | M06 API 36 |
